@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   AuthenticationError,
   InvalidRequestError,
@@ -102,7 +102,7 @@ export class FlutterwavePaymentProvider implements PaymentProvider {
       "webhook.verify"
     ],
     environments: ["test" as const, "live" as const],
-    documentationUrl: "https://developer.flutterwave.com/docs/flutterwave-standard-1",
+    documentationUrl: "https://developer.flutterwave.com/v3.0.0/docs/webhooks",
     verifiedAt: "2026-10-04"
   };
   readonly #baseUrl: string;
@@ -124,11 +124,16 @@ export class FlutterwavePaymentProvider implements PaymentProvider {
   }
 
   async createPayment(input: CreatePaymentInput): Promise<Payment> {
+    if (!input.callbackUrl)
+      throw new InvalidRequestError("Flutterwave hosted checkout requires a callbackUrl", {
+        provider: "flutterwave",
+        code: "CALLBACK_URL_REQUIRED"
+      });
     const response = await this.#request("POST", "/payments", {
       tx_ref: input.reference,
       amount: minorToMajor(input.amountMinor, input.currency),
       currency: input.currency,
-      redirect_url: input.callbackUrl ?? "https://example.invalid/payment-callback",
+      redirect_url: input.callbackUrl,
       customer: {
         email: input.customer.email,
         ...(input.customer.name ? { name: input.customer.name } : {}),
@@ -203,11 +208,8 @@ export class FlutterwavePaymentProvider implements PaymentProvider {
   }
 
   verifyWebhook(input: WebhookInput): void {
-    const signature = getHeader(input.headers, "flutterwave-signature");
-    const expected = createHmac("sha256", this.options.webhookSecret)
-      .update(input.rawBody)
-      .digest("base64");
-    if (!signature || !safeEqual(expected, signature)) {
+    const signature = getHeader(input.headers, "verif-hash");
+    if (!signature || !safeEqual(this.options.webhookSecret, signature)) {
       throw new WebhookVerificationError("Invalid Flutterwave webhook signature", {
         provider: "flutterwave",
         code: "INVALID_WEBHOOK_SIGNATURE"
@@ -218,48 +220,15 @@ export class FlutterwavePaymentProvider implements PaymentProvider {
   parseWebhook(input: WebhookInput): CanonicalPaymentEvent {
     this.verifyWebhook(input);
     const value = JSON.parse(new TextDecoder().decode(input.rawBody)) as unknown;
-    const current = currentWebhookSchema.safeParse(value);
-    if (current.success) return this.#mapCurrentWebhook(current.data);
-    const legacy = legacyWebhookSchema.parse(value);
-    const payment = this.#mapTransaction(legacy.data, legacy.data);
-    const providerEventId = `${legacy.event}:${String(legacy.data.id)}:${legacy.data.status}`;
+    const webhook = legacyWebhookSchema.parse(value);
+    const payment = this.#mapTransaction(webhook.data, webhook.data);
+    const providerEventId = `${webhook.event}:${String(webhook.data.id)}:${webhook.data.status}`;
     return {
       id: createHash("sha256").update(`flutterwave:${providerEventId}`).digest("hex"),
       type: statusToEvent(payment.status),
       provider: "flutterwave",
       providerEventId,
       createdAt: payment.updatedAt,
-      data: { payment }
-    };
-  }
-
-  #mapCurrentWebhook(event: z.infer<typeof currentWebhookSchema>): CanonicalPaymentEvent {
-    const createdAt = new Date(event.data.created_datetime * 1000).toISOString();
-    const payment: Payment = {
-      id: event.data.id,
-      provider: "flutterwave",
-      reference: event.data.reference,
-      providerReference: event.data.id,
-      amountMinor: majorToMinor(String(event.data.amount), event.data.currency),
-      currency: event.data.currency,
-      status: mapStatus(event.data.status),
-      customer: {
-        email: event.data.customer.email ?? "unknown@invalid.local",
-        ...(event.data.customer.name ? { name: event.data.customer.name } : {}),
-        ...(event.data.customer.phone ? { phone: event.data.customer.phone } : {})
-      },
-      ...(event.data.payment_method?.type ? { paymentMethod: event.data.payment_method.type } : {}),
-      metadata: event.data.meta,
-      createdAt,
-      updatedAt: createdAt,
-      ...(this.#includeRaw ? { raw: event } : {})
-    };
-    return {
-      id: createHash("sha256").update(`flutterwave:${event.id}`).digest("hex"),
-      type: statusToEvent(payment.status),
-      provider: "flutterwave",
-      providerEventId: event.id,
-      createdAt: new Date(event.timestamp).toISOString(),
       data: { payment }
     };
   }
@@ -334,30 +303,6 @@ export class FlutterwavePaymentProvider implements PaymentProvider {
   }
 }
 
-const currentWebhookSchema = z.object({
-  id: z.string(),
-  timestamp: z.number(),
-  type: z.string(),
-  data: z
-    .object({
-      id: z.string(),
-      reference: z.string(),
-      amount: z.union([z.number(), z.string()]),
-      currency: currencySchema,
-      status: z.string(),
-      created_datetime: z.number(),
-      meta: z.record(z.string(), z.unknown()).default({}),
-      customer: z
-        .object({
-          email: z.string().nullish(),
-          name: z.string().nullish(),
-          phone: z.string().nullish()
-        })
-        .loose(),
-      payment_method: z.object({ type: z.string() }).loose().optional()
-    })
-    .loose()
-});
 const legacyWebhookSchema = z.object({ event: z.string(), data: transactionSchema });
 
 function mapStatus(status: string): PaymentStatus {

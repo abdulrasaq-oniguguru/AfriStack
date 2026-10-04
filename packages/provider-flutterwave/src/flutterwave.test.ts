@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import type { HttpRequest, HttpTransport } from "@africa-dev/payments-core";
 import { describe, expect, it, vi } from "vitest";
 import { FlutterwavePaymentProvider } from "./index.js";
@@ -63,46 +62,61 @@ describe("Flutterwave adapter", () => {
     expect(payment).toMatchObject({ amountMinor: "500001", status: "succeeded" });
   });
 
-  it("verifies current base64 HMAC-SHA256 webhooks and uses provider event IDs", () => {
+  it("verifies v3 verif-hash webhooks and uses provider event IDs", () => {
     const webhookSecret = "hook-secret";
     const provider = new FlutterwavePaymentProvider({ secretKey: "secret", webhookSecret });
     const rawBody = new TextEncoder().encode(
       JSON.stringify({
-        id: "wbk_123",
-        timestamp: 1798761600000,
-        type: "charge.completed",
+        event: "charge.completed",
         data: {
           amount: 2500,
-          created_datetime: 1798761500,
           currency: "NGN",
-          customer: { email: "buyer@example.com", name: null, phone: null },
-          id: "chg_123",
+          customer: { email: "buyer@example.com" },
+          id: 123,
           meta: {},
-          payment_method: { type: "card" },
-          reference: "ORDER-1",
-          status: "succeeded"
+          payment_type: "card",
+          tx_ref: "ORDER-1",
+          status: "successful"
         }
       })
     );
-    const signature = createHmac("sha256", webhookSecret).update(rawBody).digest("base64");
     const event = provider.parseWebhook({
       rawBody,
-      headers: { "flutterwave-signature": signature }
+      headers: { "verif-hash": webhookSecret }
     });
     expect(event).toMatchObject({
       type: "payment.succeeded",
-      providerEventId: "wbk_123",
+      providerEventId: "charge.completed:123:successful",
       data: { payment: { amountMinor: "250000" } }
     });
   });
 
-  it("rejects a signature made over reserialized bytes", () => {
+  it("rejects v4 flutterwave-signature headers to prevent API-generation mixing", () => {
     const provider = new FlutterwavePaymentProvider({ secretKey: "secret", webhookSecret: "hook" });
     expect(() =>
       provider.verifyWebhook({
-        rawBody: new TextEncoder().encode('{ "id": 1 }'),
+        rawBody: new TextEncoder().encode('{ "event": "charge.completed" }'),
         headers: { "flutterwave-signature": "invalid" }
       })
     ).toThrow(/signature/);
+  });
+
+  it("requires a callback URL instead of redirecting customers to a placeholder", async () => {
+    const transport = vi.fn<HttpTransport>();
+    const provider = new FlutterwavePaymentProvider({
+      secretKey: "secret",
+      webhookSecret: "hook",
+      transport
+    });
+    await expect(
+      provider.createPayment({
+        amountMinor: "500001",
+        currency: "NGN",
+        customer: { email: "buyer@example.com" },
+        reference: "ORDER-1",
+        idempotencyKey: "idem-1"
+      })
+    ).rejects.toMatchObject({ code: "CALLBACK_URL_REQUIRED" });
+    expect(transport).not.toHaveBeenCalled();
   });
 });

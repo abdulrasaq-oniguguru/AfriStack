@@ -8,6 +8,6 @@ Verified against official documentation: 2026-10-04.
 - Refunds: <https://developer.flutterwave.com/docs/refunds>
 - Current webhook signature: <https://developer.flutterwave.com/v4.0.0/docs/webhooks>
 - Required environment variables: `FLW_SECRET_KEY`, `FLW_WEBHOOK_SECRET`
-- Implemented: hosted payment, verify by reference or provider ID, refund, current HMAC webhook verification, current and legacy payload normalization.
+- Implemented: Flutterwave v3 hosted payment, verification by reference or provider ID, refund, v3 webhook verification, and v3 payload normalization.
 
-Flutterwave Standard receives decimal major-unit strings. The current webhook signature section specifies base64 HMAC-SHA256 in `flutterwave-signature`. The same official page contains older framework examples using direct secret comparison; this adapter deliberately follows the explicit current algorithm and does not accept the weaker legacy comparison. Critical webhook facts must still be re-queried before fulfillment.
+Flutterwave Standard receives decimal major-unit strings. Hosted checkout requires a `callbackUrl`, sent as `redirect_url`; the adapter refuses placeholder redirects. For v3 webhooks, configure the dashboard secret hash as `FLW_WEBHOOK_SECRET`; Flutterwave sends it in `verif-hash`, which the adapter compares in constant time. v4 `flutterwave-signature` HMAC payloads are intentionally rejected until a complete v4 migration. Critical webhook facts must still be re-queried before fulfillment.

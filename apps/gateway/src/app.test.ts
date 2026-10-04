@@ -56,6 +56,15 @@ const headers = {
   "content-type": "application/json"
 };
 
+class SlowMockPaymentProvider extends MockPaymentProvider {
+  createCalls = 0;
+  override async createPayment(input: Parameters<MockPaymentProvider["createPayment"]>[0]) {
+    this.createCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return super.createPayment(input);
+  }
+}
+
 describe("gateway", () => {
   it("reports health without authentication and protects v1 APIs", async () => {
     expect((await app.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
@@ -92,6 +101,36 @@ describe("gateway", () => {
     expect(conflict.json<{ error: { code: string } }>().error.code).toBe("IDEMPOTENCY_CONFLICT");
   });
 
+  it("executes one financial mutation for 20 concurrent identical idempotency requests", async () => {
+    const slowProvider = new SlowMockPaymentProvider();
+    const concurrentApp = await buildGateway({ repository, providers: [slowProvider] });
+    try {
+      const responses = await Promise.all(
+        Array.from({ length: 20 }, () =>
+          concurrentApp.inject({
+            method: "POST",
+            url: "/v1/payments",
+            headers,
+            payload: paymentBody
+          })
+        )
+      );
+      expect(slowProvider.createCalls).toBe(1);
+      expect(responses.filter((response) => response.statusCode === 201)).toHaveLength(1);
+      expect(responses.filter((response) => response.statusCode === 409)).toHaveLength(19);
+
+      const replay = await concurrentApp.inject({
+        method: "POST",
+        url: "/v1/payments",
+        headers,
+        payload: paymentBody
+      });
+      expect(replay.statusCode).toBe(201);
+    } finally {
+      await concurrentApp.close();
+    }
+  });
+
   it("durably identifies duplicate normalized webhooks", async () => {
     await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody });
     const raw = JSON.stringify({ reference: "ORDER-123", status: "succeeded", eventId: "event-1" });
@@ -114,6 +153,29 @@ describe("gateway", () => {
     });
     expect(first.json<{ duplicate: boolean }>().duplicate).toBe(false);
     expect(duplicate.json<{ duplicate: boolean }>().duplicate).toBe(true);
+  });
+
+  it("accepts exactly one of 20 concurrent duplicate webhook deliveries", async () => {
+    await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody });
+    const raw = JSON.stringify({
+      reference: "ORDER-123",
+      status: "succeeded",
+      eventId: "event-race"
+    });
+    const signature = createHmac("sha256", "africa-dev-local-mock").update(raw).digest("hex");
+    const deliveries = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        app.inject({
+          method: "POST",
+          url: "/v1/webhooks/mock",
+          headers: { "content-type": "application/json", "x-africa-mock-signature": signature },
+          payload: raw
+        })
+      )
+    );
+    const bodies = deliveries.map((response) => response.json<{ duplicate: boolean }>());
+    expect(bodies.filter((body) => !body.duplicate)).toHaveLength(1);
+    expect(bodies.filter((body) => body.duplicate)).toHaveLength(19);
   });
 
   it("never exposes API key hashes during rotation", async () => {

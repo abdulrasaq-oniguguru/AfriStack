@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev:gateway": "corepack pnpm --filter @africa-dev/gateway dev",
+    "quickstart": "tsx scripts/quickstart.ts",
     "cli": "corepack pnpm --filter @africa-dev/cli exec africa-dev",
     "check": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm build"
   },

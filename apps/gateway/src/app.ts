@@ -252,7 +252,9 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       headers: normalizeHeaders(request.headers)
     });
     const inserted = await options.repository.insertWebhookEvent(event);
-    return reply.code(200).send({ received: true, duplicate: !inserted, eventId: event.id });
+    return reply
+      .code(200)
+      .send({ received: true, duplicate: !inserted, eventId: event.id, type: event.type });
   });
 
   app.post("/v1/messages", async (request, reply) => {

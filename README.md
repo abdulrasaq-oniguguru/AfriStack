@@ -31,13 +31,13 @@ Money is represented as integer minor-unit strings. `"500000"` NGN is NGN 5,000.
 
 ## What works today
 
-| Capability                 | Mock        | Paystack            | Flutterwave         |
-| -------------------------- | ----------- | ------------------- | ------------------- |
-| Create hosted payment      | Tested      | Adapter-tested      | Adapter-tested      |
-| Verify/get payment         | Tested      | Adapter-tested      | Adapter-tested      |
-| Refund                     | Tested      | Adapter-tested      | Adapter-tested      |
-| Verify webhook             | HMAC-SHA256 | HMAC-SHA512         | HMAC-SHA256         |
-| Normalize webhook          | Tested      | Tested              | Tested              |
+| Capability                 | Mock        | Paystack             | Flutterwave         |
+| -------------------------- | ----------- | -------------------- | ------------------- |
+| Create hosted payment      | Tested      | Adapter-tested       | Adapter-tested      |
+| Verify/get payment         | Tested      | Adapter-tested       | Adapter-tested      |
+| Refund                     | Tested      | Adapter-tested       | Adapter-tested      |
+| Verify webhook             | HMAC-SHA256 | HMAC-SHA512          | HMAC-SHA256         |
+| Normalize webhook          | Tested      | Tested               | Tested              |
 | Live sandbox certification | Local only  | Local gateway passed | Pending credentials |
 
 “Adapter-tested” means requests, response validation, normalization, errors, and signatures are tested against recorded shapes from current official documentation using an injected HTTP transport. It does not mean a live provider sandbox was contacted in CI.
@@ -61,16 +61,25 @@ The ordinary test suite requires no provider accounts or secrets. See [ARCHITECT
 ## Docker mock quickstart
 
 ```sh
-docker compose up --build
-curl http://localhost:4010/health
-curl -X POST http://localhost:4010/v1/payments \
-  -H "content-type: application/json" \
-  -H "x-api-key: afd_test_local_development_key_change_me" \
-  -H "idempotency-key: quickstart-order-1" \
-  -d '{"amountMinor":"500000","currency":"NGN","customer":{"email":"customer@example.com"},"reference":"ORDER-1"}'
+git clone https://github.com/abdulrasaq-oniguguru/AfriStack.git
+cd AfriStack
+corepack pnpm install
+docker compose up -d --build
+corepack pnpm quickstart
 ```
 
-The Compose profile enables only the local mock. The fixed key is strictly for local development; production startup refuses to invent a bootstrap key.
+No provider account or credential is needed: without a local `.env`, Compose selects the mock provider. The quickstart creates and verifies a payment, delivers a correctly signed webhook twice, and proves that the duplicate delivery is ignored.
+
+```text
+✓ Gateway healthy
+✓ Mock payment created (succeeded)
+✓ Payment verified (succeeded)
+✓ Webhook accepted
+✓ Canonical event: payment.succeeded
+✓ Duplicate webhook ignored
+```
+
+The fixed key is strictly for local development; production startup refuses to invent a bootstrap key.
 
 For a server deployment behind an existing Caddy proxy, use `docker-compose.production.yml` with the base Compose file. It removes the public `4010` mapping and joins the external `skinnai_default` network using the internal hostname `africa-gateway`.
 

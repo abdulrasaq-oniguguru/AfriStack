@@ -41,10 +41,41 @@ const SECRET_PATTERNS = [
   /\bBearer\s+[A-Za-z0-9._~-]+\b/gi,
   /\bafd_(?:test|live)_[A-Za-z0-9_-]+\b/g
 ];
+const SENSITIVE_KEY = /(?:authorization|api[_-]?key|secret|token|password|otp|pin)/i;
 
 export function redactSecrets(value: string): string {
   return SECRET_PATTERNS.reduce(
     (redacted, pattern) => redacted.replace(pattern, "[REDACTED]"),
     value
   );
+}
+
+export function redactLogValue(value: unknown): unknown {
+  if (typeof value === "string") return redactSecrets(value);
+  if (Array.isArray(value)) return value.map(redactLogValue);
+  if (!value || typeof value !== "object") return value;
+  if (value instanceof Error) return serializeErrorForLog(value);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [
+      key,
+      SENSITIVE_KEY.test(key) ? "[REDACTED]" : redactLogValue(nested)
+    ])
+  );
+}
+
+export function serializeErrorForLog(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { message: redactLogValue(String(error)) };
+  const africaError = error instanceof AfricaError ? error : undefined;
+  return {
+    name: error.name,
+    message: redactSecrets(error.message),
+    ...(africaError
+      ? {
+          code: africaError.code,
+          provider: africaError.provider,
+          retryable: africaError.retryable
+        }
+      : {}),
+    ...(error.stack ? { stack: redactSecrets(error.stack) } : {})
+  };
 }

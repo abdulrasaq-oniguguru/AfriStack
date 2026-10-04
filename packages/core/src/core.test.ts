@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EnvironmentSecretProvider, ProviderRegistry, env, redactSecrets } from "./index.js";
+import {
+  EnvironmentSecretProvider,
+  ProviderRegistry,
+  env,
+  redactLogValue,
+  redactSecrets,
+  serializeErrorForLog
+} from "./index.js";
 
 describe("core security and registry", () => {
   it("keeps environment references symbolic", () => {
@@ -16,6 +23,25 @@ describe("core security and registry", () => {
 
   it("redacts known credential shapes", () => {
     expect(redactSecrets("Bearer abc.def and sk_test_123456")).toBe("[REDACTED] and [REDACTED]");
+  });
+
+  it("redacts sensitive log fields recursively", () => {
+    expect(
+      redactLogValue({
+        authorization: "Bearer super-secret",
+        provider: { apiKey: "termii-secret", nested: { token: "token" } },
+        message: "sk_live_abcdef"
+      })
+    ).toEqual({
+      authorization: "[REDACTED]",
+      provider: { apiKey: "[REDACTED]", nested: { token: "[REDACTED]" } },
+      message: "[REDACTED]"
+    });
+  });
+
+  it("does not serialize credential-shaped errors verbatim", () => {
+    const error = new Error("Provider returned FLWSECK_TEST-super-secret");
+    expect(JSON.stringify(serializeErrorForLog(error))).not.toContain("super-secret");
   });
 
   it("filters registered providers by capability", () => {

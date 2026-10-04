@@ -5,7 +5,9 @@ import {
   AfricaError,
   ConfigurationError,
   InvalidRequestError,
-  WebhookVerificationError
+  WebhookVerificationError,
+  redactSecrets,
+  serializeErrorForLog
 } from "@africa-dev/core";
 import { capabilities, countries } from "@africa-dev/country-data";
 import type { MessagingProvider } from "@africa-dev/messaging-core";
@@ -355,7 +357,10 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
   });
 
   app.setErrorHandler((error, request, reply) => {
-    request.log.warn({ err: error, requestId: request.id }, "request failed");
+    request.log.warn(
+      { error: serializeErrorForLog(error), requestId: request.id },
+      "request failed"
+    );
     if (error instanceof WebhookVerificationError)
       return reply
         .code(401)
@@ -364,7 +369,7 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       return reply.code(400).send({
         error: {
           code: error instanceof AfricaError ? error.code : "INVALID_REQUEST",
-          message: error.message,
+          message: redactSecrets(error.message),
           requestId: request.id
         }
       });
@@ -372,7 +377,7 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       return reply.code(error.retryable ? 503 : 422).send({
         error: {
           code: error.code,
-          message: error.message,
+          message: redactSecrets(error.message),
           provider: error.provider,
           retryable: error.retryable,
           requestId: request.id

@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: africa_dev
       POSTGRES_USER: africa
-      POSTGRES_PASSWORD: africa_local_only
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-africa_local_only}
     volumes:
       - gateway-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -16,7 +16,7 @@ services:
   gateway:
     build: .
     environment:
-      DATABASE_URL: postgres://africa:africa_local_only@postgres:5432/africa_dev
+      DATABASE_URL: postgres://africa:${POSTGRES_PASSWORD:-africa_local_only}@postgres:5432/africa_dev
       GATEWAY_BOOTSTRAP_API_KEY: ${GATEWAY_BOOTSTRAP_API_KEY:-afd_test_local_development_key_change_me}
       GATEWAY_PROJECT_NAME: ${GATEWAY_PROJECT_NAME:-Local development}
       PAYMENT_PROVIDERS: ${PAYMENT_PROVIDERS:-mock}

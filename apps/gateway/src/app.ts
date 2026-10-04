@@ -141,6 +141,16 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       .parse(request.query);
     return { data: capabilities(query) };
   });
+  app.get("/v1/events", async (request) => {
+    const project = requiredProject(authenticatedProjects, request);
+    const query = z
+      .object({
+        cursor: z.string().min(1).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50)
+      })
+      .parse(request.query);
+    return options.repository.listWebhookEvents(project.id, query.cursor, query.limit);
+  });
 
   app.post("/v1/payments", async (request, reply) => {
     const project = requiredProject(authenticatedProjects, request);
@@ -259,14 +269,29 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
         error: { code: "PROVIDER_NOT_CONFIGURED", message: "Provider is not configured" }
       });
     const rawBody = requireRawBody(request.body);
-    const event = await provider.parseWebhook({
+    const webhookInput = {
       rawBody,
       headers: normalizeHeaders(request.headers)
+    };
+    await provider.verifyWebhook(webhookInput);
+    let event;
+    try {
+      event = await provider.parseWebhook(webhookInput);
+    } catch (error) {
+      request.log.info(
+        { provider: provider.metadata.id, error: serializeErrorForLog(error) },
+        "verified webhook event ignored because it is not supported"
+      );
+      return reply.code(200).send({ received: true, ignored: true });
+    }
+    const result = await options.repository.recordWebhookEvent(event);
+    return reply.code(200).send({
+      received: true,
+      duplicate: !result.inserted,
+      eventId: event.id,
+      type: event.type,
+      ...(result.projectId ? { projectId: result.projectId } : {})
     });
-    const inserted = await options.repository.insertWebhookEvent(event);
-    return reply
-      .code(200)
-      .send({ received: true, duplicate: !inserted, eventId: event.id, type: event.type });
   });
 
   app.post("/v1/messages", async (request, reply) => {
@@ -281,18 +306,25 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
     );
     if (claim.state === "replay") return reply.code(claim.responseStatus).send(claim.responseBody);
     if (claim.state !== "claimed") return idempotencyConflict(reply, claim.state);
-    const provider = selectMessagingProvider(
-      messagingProviderMap,
-      messagingProviders,
-      body.provider
-    );
-    const message = await provider.sendSms({
-      recipient: body.recipient,
-      message: body.message,
+    const message = await releaseOnDefinitiveFailure(
+      options.repository,
+      project.id,
       idempotencyKey,
-      senderId: body.senderId,
-      ...(body.transactional !== undefined ? { transactional: body.transactional } : {})
-    });
+      () => {
+        const provider = selectMessagingProvider(
+          messagingProviderMap,
+          messagingProviders,
+          body.provider
+        );
+        return provider.sendSms({
+          recipient: body.recipient,
+          message: body.message,
+          idempotencyKey,
+          senderId: body.senderId,
+          ...(body.transactional !== undefined ? { transactional: body.transactional } : {})
+        });
+      }
+    );
     await options.repository.saveMessage(project.id, message);
     await options.repository.completeIdempotency(project.id, idempotencyKey, 201, message);
     return reply.code(201).send(message);
@@ -310,25 +342,32 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
     );
     if (claim.state === "replay") return reply.code(claim.responseStatus).send(claim.responseBody);
     if (claim.state !== "claimed") return idempotencyConflict(reply, claim.state);
-    const provider = selectMessagingProvider(
-      messagingProviderMap,
-      messagingProviders,
-      body.provider
+    const otp = await releaseOnDefinitiveFailure(
+      options.repository,
+      project.id,
+      idempotencyKey,
+      () => {
+        const provider = selectMessagingProvider(
+          messagingProviderMap,
+          messagingProviders,
+          body.provider
+        );
+        if (!provider.sendOtp)
+          throw new InvalidRequestError("Selected provider does not support OTP delivery", {
+            code: "OTP_NOT_SUPPORTED",
+            provider: provider.metadata.id
+          });
+        return provider.sendOtp({
+          recipient: body.recipient,
+          senderId: body.senderId,
+          message: body.message,
+          pinPlaceholder: "<pin>",
+          ...(body.pinLength ? { pinLength: body.pinLength } : {}),
+          ...(body.ttlMinutes ? { ttlMinutes: body.ttlMinutes } : {}),
+          ...(body.attempts ? { attempts: body.attempts } : {})
+        });
+      }
     );
-    if (!provider.sendOtp)
-      throw new InvalidRequestError("Selected provider does not support OTP delivery", {
-        code: "OTP_NOT_SUPPORTED",
-        provider: provider.metadata.id
-      });
-    const otp = await provider.sendOtp({
-      recipient: body.recipient,
-      senderId: body.senderId,
-      message: body.message,
-      pinPlaceholder: "<pin>",
-      ...(body.pinLength ? { pinLength: body.pinLength } : {}),
-      ...(body.ttlMinutes ? { ttlMinutes: body.ttlMinutes } : {}),
-      ...(body.attempts ? { attempts: body.attempts } : {})
-    });
     await options.repository.completeIdempotency(project.id, idempotencyKey, 201, otp);
     return reply.code(201).send(otp);
   });
@@ -379,7 +418,7 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       return reply.code(400).send({
         error: {
           code: error instanceof AfricaError ? error.code : "INVALID_REQUEST",
-          message: redactSecrets(error.message),
+          message: redactSecrets(error instanceof Error ? error.message : "Request rejected"),
           requestId: request.id
         }
       });
@@ -390,6 +429,20 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
           message: redactSecrets(error.message),
           provider: error.provider,
           retryable: error.retryable,
+          requestId: request.id
+        }
+      });
+    const statusCode = (error as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === "number" && [413, 415, 429].includes(statusCode))
+      return reply.code(statusCode).send({
+        error: {
+          code:
+            statusCode === 413
+              ? "PAYLOAD_TOO_LARGE"
+              : statusCode === 415
+                ? "UNSUPPORTED_MEDIA_TYPE"
+                : "RATE_LIMITED",
+          message: redactSecrets(error instanceof Error ? error.message : "Request rejected"),
           requestId: request.id
         }
       });

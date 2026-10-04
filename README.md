@@ -31,14 +31,14 @@ Money is represented as integer minor-unit strings. `"500000"` NGN is NGN 5,000.
 
 ## What works today
 
-| Capability                 | Mock        | Paystack             | Flutterwave         |
-| -------------------------- | ----------- | -------------------- | ------------------- |
-| Create hosted payment      | Tested      | Adapter-tested       | Adapter-tested      |
-| Verify/get payment         | Tested      | Adapter-tested       | Adapter-tested      |
-| Refund                     | Tested      | Adapter-tested       | Adapter-tested      |
-| Verify webhook             | HMAC-SHA256 | HMAC-SHA512          | HMAC-SHA256         |
-| Normalize webhook          | Tested      | Tested               | Tested              |
-| Live sandbox certification | Local only  | Local gateway passed | Pending credentials |
+| Capability                 | Mock        | Paystack             | Flutterwave                |
+| -------------------------- | ----------- | -------------------- | -------------------------- |
+| Create hosted payment      | Tested      | Adapter-tested       | Adapter-tested             |
+| Verify/get payment         | Tested      | Adapter-tested       | Adapter-tested             |
+| Refund                     | Tested      | Adapter-tested       | Adapter-tested             |
+| Verify webhook             | HMAC-SHA256 | HMAC-SHA512          | v3 `verif-hash` comparison |
+| Normalize webhook          | Tested      | Tested               | Tested                     |
+| Live sandbox certification | Local only  | Local gateway passed | Pending credentials        |
 
 “Adapter-tested” means requests, response validation, normalization, errors, and signatures are tested against recorded shapes from current official documentation using an injected HTTP transport. It does not mean a live provider sandbox was contacted in CI.
 
@@ -81,7 +81,7 @@ No provider account or credential is needed: without a local `.env`, Compose sel
 
 The fixed key is strictly for local development; production startup refuses to invent a bootstrap key.
 
-For a server deployment behind an existing Caddy proxy, use `docker-compose.production.yml` with the base Compose file. It removes the public `4010` mapping and joins the external `skinnai_default` network using the internal hostname `africa-gateway`.
+For production, add the production overlay: `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d`. It exposes no host port, requires a non-default `GATEWAY_BOOTSTRAP_API_KEY`, and refuses the mock provider unless `GATEWAY_ALLOW_MOCK=true` is explicitly set for an isolated demonstration. Attach a reverse-proxy network in a deployment-specific Compose override; AfriStack does not assume another project's network name.
 
 Generate a project configuration with:
 

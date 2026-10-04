@@ -33,7 +33,13 @@ function configuredProviders(): PaymentProvider[] {
     .split(",")
     .map((value) => value.trim());
   return configured.map((id) => {
-    if (id === "mock") return new MockPaymentProvider();
+    if (id === "mock") {
+      if (process.env["NODE_ENV"] === "production" && process.env["GATEWAY_ALLOW_MOCK"] !== "true")
+        throw new ConfigurationError(
+          "Mock provider is disabled in production; set GATEWAY_ALLOW_MOCK=true only for an intentional local demonstration"
+        );
+      return new MockPaymentProvider();
+    }
     if (id === "paystack")
       return new PaystackPaymentProvider({ secretKey: requiredEnvironment("PAYSTACK_SECRET_KEY") });
     if (id === "flutterwave")

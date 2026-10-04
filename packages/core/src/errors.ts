@@ -41,7 +41,20 @@ const SECRET_PATTERNS = [
   /\bBearer\s+[A-Za-z0-9._~-]+\b/gi,
   /\bafd_(?:test|live)_[A-Za-z0-9_-]+\b/g
 ];
-const SENSITIVE_KEY = /(?:authorization|api[_-]?key|secret|token|password|otp|pin)/i;
+const SENSITIVE_KEYS = new Set([
+  "authorization",
+  "api_key",
+  "apikey",
+  "secret",
+  "secretkey",
+  "webhooksecret",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "password",
+  "otp",
+  "pin"
+]);
 
 export function redactSecrets(value: string): string {
   return SECRET_PATTERNS.reduce(
@@ -58,7 +71,7 @@ export function redactLogValue(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [
       key,
-      SENSITIVE_KEY.test(key) ? "[REDACTED]" : redactLogValue(nested)
+      SENSITIVE_KEYS.has(key.toLowerCase()) ? "[REDACTED]" : redactLogValue(nested)
     ])
   );
 }
@@ -76,6 +89,7 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
           retryable: africaError.retryable
         }
       : {}),
-    ...(error.stack ? { stack: redactSecrets(error.stack) } : {})
+    ...(error.stack ? { stack: redactSecrets(error.stack) } : {}),
+    ...(error.cause ? { cause: redactLogValue(error.cause) } : {})
   };
 }

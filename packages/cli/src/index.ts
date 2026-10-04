@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, writeFile } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { capabilities, countries } from "@africa-dev/country-data";
@@ -100,12 +101,12 @@ async function doctorCommand(): Promise<number> {
   ] as const;
   for (const [label, ok] of checks) stdout.write(`${ok ? "✓" : "✗"} ${label}\n`);
   stdout.write("Secrets were checked for presence only and were not printed.\n");
-  return 0;
+  return checks.every(([, ok]) => ok) ? 0 : 1;
 }
 
 function providersCommand(): number {
   stdout.write(
-    "mock\tpayments\tNG\timplemented\npaystack\tpayments\tNG\timplemented\nflutterwave\tpayments\tNG\timplemented\n"
+    "mock\tpayments\tNG\tmock-verified\npaystack\tpayments\tNG\tadapter-tested\nflutterwave\tpayments\tNG\tadapter-tested (sandbox certification pending)\n"
   );
   return 0;
 }
@@ -155,6 +156,9 @@ async function writeNew(path: string, content: string, force: boolean): Promise<
   await writeFile(path, content, { encoding: "utf8", flag: force ? "w" : "wx" });
 }
 
-if (process.argv[1]?.endsWith("index.js")) {
+const entrypoint = process.argv[1]
+  ? await realpath(process.argv[1]).catch(() => process.argv[1])
+  : undefined;
+if (entrypoint === new URL(import.meta.url).pathname) {
   process.exitCode = await run();
 }

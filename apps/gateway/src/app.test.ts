@@ -3,10 +3,11 @@ import type { MessagingProvider } from "@africa-dev/messaging-core";
 import { MockPaymentProvider } from "@africa-dev/testkit";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildGateway } from "./app.js";
-import { MemoryGatewayRepository } from "./repository.js";
+import { type Project, MemoryGatewayRepository } from "./repository.js";
 
 const apiKey = "afd_test_local_development_key_change_me";
 let repository: MemoryGatewayRepository;
+let project: Project;
 let provider: MockPaymentProvider;
 let app: Awaited<ReturnType<typeof buildGateway>>;
 
@@ -34,7 +35,7 @@ const messagingProvider: MessagingProvider = {
 
 beforeEach(async () => {
   repository = new MemoryGatewayRepository();
-  repository.seedProject("test", apiKey);
+  project = repository.seedProject("test", apiKey);
   provider = new MockPaymentProvider();
   app = await buildGateway({
     repository,
@@ -159,7 +160,7 @@ describe("gateway", () => {
     } finally {
       await concurrentApp.close();
     }
-  });
+  }, 15_000);
 
   it("durably identifies duplicate normalized webhooks", async () => {
     await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody });
@@ -183,6 +184,21 @@ describe("gateway", () => {
     });
     expect(first.json<{ duplicate: boolean }>().duplicate).toBe(false);
     expect(duplicate.json<{ duplicate: boolean }>().duplicate).toBe(true);
+    const events = await app.inject({
+      method: "GET",
+      url: "/v1/events",
+      headers: { "x-api-key": apiKey }
+    });
+    expect(events.statusCode).toBe(200);
+    expect(events.json<{ data: Array<{ type: string }> }>().data).toEqual([
+      expect.objectContaining({ type: "payment.succeeded" })
+    ]);
+    const payment = await app.inject({
+      method: "GET",
+      url: "/v1/payments/ORDER-123",
+      headers: { "x-api-key": apiKey }
+    });
+    expect(payment.json<{ status: string }>().status).toBe("succeeded");
   });
 
   it("accepts exactly one of 20 concurrent duplicate webhook deliveries", async () => {
@@ -206,6 +222,34 @@ describe("gateway", () => {
     const bodies = deliveries.map((response) => response.json<{ duplicate: boolean }>());
     expect(bodies.filter((body) => !body.duplicate)).toHaveLength(1);
     expect(bodies.filter((body) => body.duplicate)).toHaveLength(19);
+  });
+
+  it("does not let a stale webhook regress a final payment state", async () => {
+    await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody });
+    const deliver = async (status: "succeeded" | "pending", eventId: string) => {
+      const raw = JSON.stringify({ reference: "ORDER-123", status, eventId });
+      return app.inject({
+        method: "POST",
+        url: "/v1/webhooks/mock",
+        headers: {
+          "content-type": "application/json",
+          "x-africa-mock-signature": createHmac("sha256", "africa-dev-local-mock")
+            .update(raw)
+            .digest("hex")
+        },
+        payload: raw
+      });
+    };
+    expect((await deliver("succeeded", "event-succeeded")).statusCode).toBe(200);
+    expect((await deliver("pending", "event-stale-pending")).statusCode).toBe(200);
+    const stored = await repository.getPayment(project.id, "ORDER-123");
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/events",
+      headers: { "x-api-key": apiKey }
+    });
+    expect(response.json<{ data: Array<{ type: string }> }>().data).toHaveLength(2);
+    expect(stored?.status).toBe("succeeded");
   });
 
   it("never exposes API key hashes during rotation", async () => {

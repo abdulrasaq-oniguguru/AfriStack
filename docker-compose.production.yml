@@ -1,13 +1,5 @@
 services:
   gateway:
     ports: !reset []
-    networks:
-      default: {}
-      skinnai_default:
-        aliases:
-          - africa-gateway
-
-networks:
-  skinnai_default:
-    external: true
-    name: skinnai_default
+    environment:
+      NODE_ENV: production

@@ -30,5 +30,5 @@
       "@africa-dev/sdk": ["packages/sdk/src/index.ts"]
     }
   },
-  "include": ["packages/**/*.ts", "apps/**/*.ts", "vitest.config.ts"]
+  "include": ["packages/**/*.ts", "apps/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"]
 }

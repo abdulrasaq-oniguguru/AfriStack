@@ -3,7 +3,13 @@ import type { Message } from "@africa-dev/messaging-core";
 import type { CanonicalPaymentEvent, Payment } from "@africa-dev/payments-core";
 import postgres, { type Sql } from "postgres";
 import { apiKeyPrefix, hashApiKey, verifyApiKey } from "./api-keys.js";
-import type { GatewayRepository, IdempotencyClaim, Project } from "./repository.js";
+import {
+  canAdvancePayment,
+  type GatewayRepository,
+  type IdempotencyClaim,
+  type Project,
+  type StoredWebhookEvent
+} from "./repository.js";
 
 export class PostgresGatewayRepository implements GatewayRepository {
   readonly #sql: Sql;
@@ -122,13 +128,65 @@ export class PostgresGatewayRepository implements GatewayRepository {
       on conflict (id) do update set status = excluded.status, normalized_data = excluded.normalized_data`;
   }
 
-  async insertWebhookEvent(event: CanonicalPaymentEvent): Promise<boolean> {
-    const inserted = await this.#sql<
-      { id: string }[]
-    >`insert into webhook_events (id, provider, provider_event_id, event_type, normalized_data, status)
-      values (${event.id}, ${event.provider}, ${event.providerEventId}, ${event.type}, ${this.#sql.json(event as never)}, 'received')
-      on conflict (provider, provider_event_id) do nothing returning id`;
-    return Boolean(inserted[0]);
+  async recordWebhookEvent(
+    event: CanonicalPaymentEvent
+  ): Promise<{ inserted: boolean; projectId?: string }> {
+    return this.#sql.begin(async (sql) => {
+      const [payment] = await sql<
+        { project_id: string; normalized_data: Payment }[]
+      >`select project_id, normalized_data from payments
+        where provider = ${event.provider} and reference = ${event.data.payment.reference}
+        limit 1 for update`;
+      const projectId = payment?.project_id;
+      const matchesPayment =
+        payment?.normalized_data.amountMinor === event.data.payment.amountMinor &&
+        payment.normalized_data.currency === event.data.payment.currency;
+      const inserted = await sql<{ id: string }[]>`
+        insert into webhook_events (id, project_id, provider, provider_event_id, event_type, normalized_data, status)
+        values (${event.id}, ${projectId ?? null}, ${event.provider}, ${event.providerEventId}, ${event.type}, ${sql.json(event as never)}, ${payment && matchesPayment ? "processed" : "ignored"})
+        on conflict (provider, provider_event_id) do nothing returning id`;
+      if (
+        inserted[0] &&
+        payment &&
+        matchesPayment &&
+        canAdvancePayment(payment.normalized_data.status, event.data.payment.status)
+      ) {
+        await sql`update payments set provider_reference = ${event.data.payment.providerReference ?? null},
+          status = ${event.data.payment.status}, normalized_data = ${sql.json(event.data.payment as never)}, updated_at = now()
+          where project_id = ${payment.project_id} and reference = ${event.data.payment.reference}`;
+      }
+      return { inserted: Boolean(inserted[0]), ...(projectId ? { projectId } : {}) };
+    });
+  }
+
+  async listWebhookEvents(
+    projectId: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<{ data: StoredWebhookEvent[]; nextCursor?: string }> {
+    const rows = await this.#sql<
+      {
+        id: string;
+        normalized_data: CanonicalPaymentEvent;
+        received_at: string;
+        status: "processed" | "ignored";
+      }[]
+    >`select id, normalized_data, received_at, status from webhook_events
+      where project_id = ${projectId}
+        and (${cursor ?? null}::text is null or (received_at, id) < (
+          select received_at, id from webhook_events where id = ${cursor ?? null} and project_id = ${projectId}
+        ))
+      order by received_at desc, id desc limit ${limit + 1}`;
+    const page = rows.slice(0, limit).map((row) => ({
+      ...row.normalized_data,
+      receivedAt: new Date(row.received_at).toISOString(),
+      processingStatus: row.status
+    }));
+    const last = page.at(-1);
+    return {
+      data: page,
+      ...(rows.length > limit && last ? { nextCursor: last.id } : {})
+    };
   }
 
   async createApiKey(projectId: string, prefix: string, hash: string): Promise<void> {
@@ -153,7 +211,9 @@ create index if not exists project_api_keys_prefix_idx on project_api_keys(prefi
 create table if not exists provider_connections (id uuid primary key, project_id uuid not null references projects(id), provider text not null, environment text not null, secret_reference text not null, created_at timestamptz not null default now(), unique(project_id, provider, environment));
 create table if not exists payments (id text primary key, project_id uuid not null references projects(id), provider text not null, reference text not null, provider_reference text, amount_minor numeric(78,0) not null, currency char(3) not null, status text not null, normalized_data jsonb not null, created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(project_id, reference));
 create table if not exists refunds (id text primary key, project_id uuid not null references projects(id), payment_id text not null references payments(id), provider text not null, amount_minor numeric(78,0) not null, currency char(3) not null, status text not null, normalized_data jsonb not null, created_at timestamptz not null default now());
-create table if not exists webhook_events (id text primary key, provider text not null, provider_event_id text not null, event_type text not null, normalized_data jsonb not null, status text not null, received_at timestamptz not null default now(), processed_at timestamptz, unique(provider, provider_event_id));
+create table if not exists webhook_events (id text primary key, project_id uuid references projects(id), provider text not null, provider_event_id text not null, event_type text not null, normalized_data jsonb not null, status text not null, received_at timestamptz not null default now(), processed_at timestamptz, unique(provider, provider_event_id));
+alter table webhook_events add column if not exists project_id uuid references projects(id);
+create index if not exists webhook_events_project_received_idx on webhook_events(project_id, received_at desc, id desc);
 create table if not exists webhook_attempts (id uuid primary key, webhook_event_id text not null references webhook_events(id), attempt integer not null, status text not null, error_code text, created_at timestamptz not null default now());
 create table if not exists messages (id text primary key, project_id uuid not null references projects(id), provider text not null, recipient_hash text not null, status text not null, normalized_data jsonb not null, created_at timestamptz not null default now());
 create table if not exists idempotency_keys (project_id uuid not null references projects(id), key text not null, operation text not null, request_hash text not null, status text not null, response_status integer, response_body jsonb, created_at timestamptz not null default now(), completed_at timestamptz, primary key(project_id, key));

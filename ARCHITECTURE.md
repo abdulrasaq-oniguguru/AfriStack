@@ -22,7 +22,7 @@ Provider adapters own authentication, HTTP shape, provider amount units, status/
 - `@africa-dev/payments-core`: canonical payment contract, exact money conversion, HTTP transport boundary.
 - `@africa-dev/testkit`: stateful local mock and failure scenarios.
 - `@africa-dev/provider-paystack`: Paystack mapping and HMAC-SHA512 verification.
-- `@africa-dev/provider-flutterwave`: Flutterwave mapping and HMAC-SHA256 verification.
+- `@africa-dev/provider-flutterwave`: Flutterwave v3 mapping and `verif-hash` webhook verification.
 - `@africa-dev/sdk`: provider-neutral application API and conservative routing.
 
 ## Payment flow

@@ -9,6 +9,10 @@ export type IdempotencyClaim =
   | { state: "replay"; responseStatus: number; responseBody: unknown }
   | { state: "conflict" }
   | { state: "processing" };
+export type StoredWebhookEvent = CanonicalPaymentEvent & {
+  receivedAt: string;
+  processingStatus: "processed" | "ignored";
+};
 
 export interface GatewayRepository {
   ready(): Promise<boolean>;
@@ -29,7 +33,14 @@ export interface GatewayRepository {
   savePayment(projectId: string, payment: Payment): Promise<void>;
   saveMessage(projectId: string, message: Message): Promise<void>;
   getPayment(projectId: string, reference: string): Promise<Payment | undefined>;
-  insertWebhookEvent(event: CanonicalPaymentEvent): Promise<boolean>;
+  recordWebhookEvent(
+    event: CanonicalPaymentEvent
+  ): Promise<{ inserted: boolean; projectId?: string }>;
+  listWebhookEvents(
+    projectId: string,
+    cursor?: string,
+    limit?: number
+  ): Promise<{ data: StoredWebhookEvent[]; nextCursor?: string }>;
   createApiKey(projectId: string, prefix: string, hash: string): Promise<void>;
   revokeApiKey(projectId: string, prefix: string): Promise<boolean>;
   close(): Promise<void>;
@@ -51,6 +62,7 @@ export class MemoryGatewayRepository implements GatewayRepository {
   readonly #payments = new Map<string, Payment>();
   readonly #messages = new Map<string, Message>();
   readonly #webhooks = new Set<string>();
+  readonly #events = new Map<string, StoredWebhookEvent[]>();
 
   seedProject(name: string, apiKey: string): Project {
     const project = { id: randomUUID(), name };
@@ -130,11 +142,47 @@ export class MemoryGatewayRepository implements GatewayRepository {
   async saveMessage(projectId: string, message: Message): Promise<void> {
     this.#messages.set(`${projectId}:${message.id}`, structuredClone(message));
   }
-  async insertWebhookEvent(event: CanonicalPaymentEvent): Promise<boolean> {
+  async recordWebhookEvent(
+    event: CanonicalPaymentEvent
+  ): Promise<{ inserted: boolean; projectId?: string }> {
     const key = `${event.provider}:${event.providerEventId}`;
-    if (this.#webhooks.has(key)) return false;
+    if (this.#webhooks.has(key)) return { inserted: false };
     this.#webhooks.add(key);
-    return true;
+    const paymentEntry = [...this.#payments.entries()].find(
+      ([, payment]) =>
+        payment.provider === event.provider && payment.reference === event.data.payment.reference
+    );
+    if (!paymentEntry) return { inserted: true };
+    const [storageKey, stored] = paymentEntry;
+    const projectId = storageKey.slice(0, storageKey.indexOf(":"));
+    const matchesPayment =
+      stored.amountMinor === event.data.payment.amountMinor &&
+      stored.currency === event.data.payment.currency;
+    if (matchesPayment && canAdvancePayment(stored.status, event.data.payment.status))
+      this.#payments.set(storageKey, structuredClone(event.data.payment));
+    const storedEvent: StoredWebhookEvent = {
+      ...structuredClone(event),
+      receivedAt: new Date().toISOString(),
+      processingStatus: matchesPayment ? "processed" : "ignored"
+    };
+    const events = this.#events.get(projectId) ?? [];
+    events.unshift(storedEvent);
+    this.#events.set(projectId, events);
+    return { inserted: true, projectId };
+  }
+  async listWebhookEvents(
+    projectId: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<{ data: StoredWebhookEvent[]; nextCursor?: string }> {
+    const events = this.#events.get(projectId) ?? [];
+    const start = cursor ? events.findIndex((event) => event.id === cursor) + 1 : 0;
+    const data = events.slice(Math.max(start, 0), Math.max(start, 0) + limit);
+    const finalEvent = data.at(-1);
+    return {
+      data,
+      ...(finalEvent && start + data.length < events.length ? { nextCursor: finalEvent.id } : {})
+    };
   }
   async createApiKey(projectId: string, prefix: string, hash: string): Promise<void> {
     this.#keys.push({ projectId, prefix, hash });
@@ -151,4 +199,23 @@ export class MemoryGatewayRepository implements GatewayRepository {
   close(): Promise<void> {
     return Promise.resolve();
   }
+}
+
+export function canAdvancePayment(
+  current: Payment["status"],
+  incoming: Payment["status"]
+): boolean {
+  if (current === incoming) return true;
+  if (["succeeded", "failed", "cancelled", "refunded", "partially_refunded"].includes(current))
+    return incoming === "refunded" || incoming === "partially_refunded";
+  const rank: Record<Payment["status"], number> = {
+    pending: 0,
+    processing: 1,
+    succeeded: 2,
+    failed: 2,
+    cancelled: 2,
+    partially_refunded: 3,
+    refunded: 4
+  };
+  return rank[incoming] >= rank[current];
 }

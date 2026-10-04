@@ -23,7 +23,8 @@ const app = await buildGateway({
   providers: configuredProviders(),
   messagingProviders: configuredMessagingProviders(),
   country: process.env["AFRICA_COUNTRY"] ?? "NG",
-  logger: true
+  logger: true,
+  trustProxy: process.env["GATEWAY_TRUST_PROXY"] === "true"
 });
 const port = Number(process.env["PORT"] ?? "4010");
 await app.listen({ host: "0.0.0.0", port });

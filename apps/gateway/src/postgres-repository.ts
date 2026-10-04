@@ -50,14 +50,20 @@ export class PostgresGatewayRepository implements GatewayRepository {
     } catch {
       return undefined;
     }
-    const rows = await this.#sql<{ project_id: string; name: string; key_hash: string }[]>`
-      select k.project_id, p.name, k.key_hash from project_api_keys k join projects p on p.id = k.project_id
+    const rows = await this.#sql<
+      { project_id: string; name: string; key_hash: string; prefix: string }[]
+    >`
+      select k.project_id, p.name, k.key_hash, k.prefix from project_api_keys k join projects p on p.id = k.project_id
       where k.prefix = ${prefix} and k.revoked_at is null`;
     const row = rows.find((candidate) => verifyApiKey(key, candidate.key_hash));
     if (!row) return undefined;
     await this
       .#sql`update project_api_keys set last_used_at = now() where project_id = ${row.project_id} and prefix = ${prefix}`;
-    return { id: row.project_id, name: row.name };
+    return {
+      id: row.project_id,
+      name: row.name,
+      keyEnvironment: row.prefix.startsWith("afd_live_") ? "live" : "test"
+    };
   }
 
   async claimIdempotency(
@@ -130,7 +136,7 @@ export class PostgresGatewayRepository implements GatewayRepository {
 
   async recordWebhookEvent(
     event: CanonicalPaymentEvent
-  ): Promise<{ inserted: boolean; projectId?: string }> {
+  ): Promise<{ inserted: boolean; processed: boolean; projectId?: string }> {
     return this.#sql.begin(async (sql) => {
       const [payment] = await sql<
         { project_id: string; normalized_data: Payment }[]
@@ -140,22 +146,27 @@ export class PostgresGatewayRepository implements GatewayRepository {
       const projectId = payment?.project_id;
       const matchesPayment =
         payment?.normalized_data.amountMinor === event.data.payment.amountMinor &&
-        payment.normalized_data.currency === event.data.payment.currency;
+        payment?.normalized_data.currency === event.data.payment.currency;
       const inserted = await sql<{ id: string }[]>`
         insert into webhook_events (id, project_id, provider, provider_event_id, event_type, normalized_data, status)
         values (${event.id}, ${projectId ?? null}, ${event.provider}, ${event.providerEventId}, ${event.type}, ${sql.json(event as never)}, ${payment && matchesPayment ? "processed" : "ignored"})
         on conflict (provider, provider_event_id) do nothing returning id`;
-      if (
+      const processed = Boolean(
         inserted[0] &&
         payment &&
         matchesPayment &&
         canAdvancePayment(payment.normalized_data.status, event.data.payment.status)
-      ) {
+      );
+      if (processed) {
         await sql`update payments set provider_reference = ${event.data.payment.providerReference ?? null},
           status = ${event.data.payment.status}, normalized_data = ${sql.json(event.data.payment as never)}, updated_at = now()
-          where project_id = ${payment.project_id} and reference = ${event.data.payment.reference}`;
+          where project_id = ${payment!.project_id} and reference = ${event.data.payment.reference}`;
       }
-      return { inserted: Boolean(inserted[0]), ...(projectId ? { projectId } : {}) };
+      return {
+        inserted: Boolean(inserted[0]),
+        processed,
+        ...(projectId ? { projectId } : {})
+      };
     });
   }
 

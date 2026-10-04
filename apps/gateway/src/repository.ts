@@ -3,7 +3,7 @@ import type { CanonicalPaymentEvent, Payment } from "@africa-dev/payments-core";
 import type { Message } from "@africa-dev/messaging-core";
 import { apiKeyPrefix, hashApiKey, verifyApiKey } from "./api-keys.js";
 
-export type Project = { id: string; name: string };
+export type Project = { id: string; name: string; keyEnvironment?: "test" | "live" };
 export type IdempotencyClaim =
   | { state: "claimed" }
   | { state: "replay"; responseStatus: number; responseBody: unknown }
@@ -35,7 +35,7 @@ export interface GatewayRepository {
   getPayment(projectId: string, reference: string): Promise<Payment | undefined>;
   recordWebhookEvent(
     event: CanonicalPaymentEvent
-  ): Promise<{ inserted: boolean; projectId?: string }>;
+  ): Promise<{ inserted: boolean; processed: boolean; projectId?: string }>;
   listWebhookEvents(
     projectId: string,
     cursor?: string,
@@ -90,7 +90,8 @@ export class MemoryGatewayRepository implements GatewayRepository {
       (candidate) =>
         candidate.prefix === prefix && !candidate.revokedAt && verifyApiKey(key, candidate.hash)
     );
-    return match ? this.#projects.get(match.projectId) : undefined;
+    const project = match ? this.#projects.get(match.projectId) : undefined;
+    return project ? { ...project, keyEnvironment: apiKeyEnvironment(key) } : undefined;
   }
 
   async claimIdempotency(
@@ -144,31 +145,31 @@ export class MemoryGatewayRepository implements GatewayRepository {
   }
   async recordWebhookEvent(
     event: CanonicalPaymentEvent
-  ): Promise<{ inserted: boolean; projectId?: string }> {
+  ): Promise<{ inserted: boolean; processed: boolean; projectId?: string }> {
     const key = `${event.provider}:${event.providerEventId}`;
-    if (this.#webhooks.has(key)) return { inserted: false };
+    if (this.#webhooks.has(key)) return { inserted: false, processed: false };
     this.#webhooks.add(key);
     const paymentEntry = [...this.#payments.entries()].find(
       ([, payment]) =>
         payment.provider === event.provider && payment.reference === event.data.payment.reference
     );
-    if (!paymentEntry) return { inserted: true };
+    if (!paymentEntry) return { inserted: true, processed: false };
     const [storageKey, stored] = paymentEntry;
     const projectId = storageKey.slice(0, storageKey.indexOf(":"));
     const matchesPayment =
       stored.amountMinor === event.data.payment.amountMinor &&
       stored.currency === event.data.payment.currency;
-    if (matchesPayment && canAdvancePayment(stored.status, event.data.payment.status))
-      this.#payments.set(storageKey, structuredClone(event.data.payment));
+    const processed = matchesPayment && canAdvancePayment(stored.status, event.data.payment.status);
+    if (processed) this.#payments.set(storageKey, structuredClone(event.data.payment));
     const storedEvent: StoredWebhookEvent = {
       ...structuredClone(event),
       receivedAt: new Date().toISOString(),
-      processingStatus: matchesPayment ? "processed" : "ignored"
+      processingStatus: processed ? "processed" : "ignored"
     };
     const events = this.#events.get(projectId) ?? [];
     events.unshift(storedEvent);
     this.#events.set(projectId, events);
-    return { inserted: true, projectId };
+    return { inserted: true, processed, projectId };
   }
   async listWebhookEvents(
     projectId: string,
@@ -199,6 +200,10 @@ export class MemoryGatewayRepository implements GatewayRepository {
   close(): Promise<void> {
     return Promise.resolve();
   }
+}
+
+function apiKeyEnvironment(key: string): "test" | "live" {
+  return key.startsWith("afd_live_") ? "live" : "test";
 }
 
 export function canAdvancePayment(

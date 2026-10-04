@@ -83,6 +83,72 @@ export const openApiDocument = {
     "/v1/capabilities": {
       get: { responses: { "200": { description: "Configured capabilities" } } }
     },
-    "/v1/countries": { get: { responses: { "200": { description: "Country registry" } } } }
+    "/v1/countries": { get: { responses: { "200": { description: "Country registry" } } } },
+    "/v1/events": {
+      get: {
+        description: "Read project-scoped normalized webhook events using cursor pagination.",
+        parameters: [
+          { name: "cursor", in: "query", schema: { type: "string" } },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100 } }
+        ],
+        responses: {
+          "200": { description: "Normalized event page" },
+          "401": { description: "Invalid API key" }
+        }
+      }
+    },
+    "/v1/messages": {
+      post: {
+        description: "Send an SMS through a configured messaging provider.",
+        parameters: [
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string" } }
+        ],
+        responses: {
+          "201": { description: "Canonical message" },
+          "400": { description: "Invalid request" },
+          "409": { description: "Idempotency conflict" }
+        }
+      }
+    },
+    "/v1/otp": {
+      post: {
+        description: "Send an OTP through a configured provider that implements OTP delivery.",
+        parameters: [
+          { name: "Idempotency-Key", in: "header", required: true, schema: { type: "string" } }
+        ],
+        responses: {
+          "201": { description: "OTP delivery initiated" },
+          "422": { description: "OTP capability unavailable" }
+        }
+      }
+    },
+    "/v1/otp/verify": {
+      post: {
+        description: "Verify an OTP with the selected messaging provider.",
+        responses: {
+          "200": { description: "OTP verification result" },
+          "422": { description: "OTP capability unavailable" }
+        }
+      }
+    },
+    "/v1/api-keys": {
+      post: {
+        description: "Create a project API key. Test keys cannot create live keys.",
+        responses: {
+          "201": { description: "New key; shown exactly once" },
+          "403": { description: "Insufficient key scope" }
+        }
+      }
+    },
+    "/v1/api-keys/{prefix}": {
+      delete: {
+        description: "Revoke a project API key by prefix.",
+        parameters: [{ name: "prefix", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "204": { description: "Key revoked" },
+          "404": { description: "Key not found" }
+        }
+      }
+    }
   }
 } as const;

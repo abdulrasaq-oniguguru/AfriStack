@@ -264,6 +264,17 @@ describe("gateway", () => {
     expect(response.body).not.toContain("scrypt:");
   });
 
+  it("prevents a test API key from minting a live API key", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/api-keys",
+      headers: { "x-api-key": apiKey, "content-type": "application/json" },
+      payload: { environment: "live" }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe("INSUFFICIENT_KEY_SCOPE");
+  });
+
   it("sends a message and replays the idempotent canonical response", async () => {
     const messageHeaders = {
       "x-api-key": apiKey,

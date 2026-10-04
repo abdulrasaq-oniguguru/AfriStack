@@ -83,6 +83,8 @@ The fixed key is strictly for local development; production startup refuses to i
 
 For production, add the production overlay: `docker compose -f docker-compose.yml -f docker-compose.production.yml up -d`. It exposes no host port, requires a non-default `GATEWAY_BOOTSTRAP_API_KEY`, and refuses the mock provider unless `GATEWAY_ALLOW_MOCK=true` is explicitly set for an isolated demonstration. Attach a reverse-proxy network in a deployment-specific Compose override; AfriStack does not assume another project's network name.
 
+Set `GATEWAY_TRUST_PROXY=true` only when the gateway sits behind a reverse proxy you operate and which overwrites forwarded client-address headers. The default is `false`, so untrusted forwarded headers cannot bypass rate limiting.
+
 Generate a project configuration with:
 
 ```sh

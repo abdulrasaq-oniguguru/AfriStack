@@ -11,7 +11,7 @@ import {
 } from "@africa-dev/core";
 import { capabilities, countries } from "@africa-dev/country-data";
 import type { MessagingProvider } from "@africa-dev/messaging-core";
-import type { PaymentProvider } from "@africa-dev/payments-core";
+import type { PaymentProvider, PaymentStatus } from "@africa-dev/payments-core";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { generateApiKey } from "./api-keys.js";
@@ -24,6 +24,7 @@ export type BuildGatewayOptions = {
   messagingProviders?: MessagingProvider[];
   country?: string;
   logger?: boolean;
+  trustProxy?: boolean;
 };
 
 const paymentRequestSchema = z.object({
@@ -93,7 +94,8 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
         }
       : false,
     bodyLimit: 1_048_576,
-    requestIdHeader: "x-request-id"
+    requestIdHeader: "x-request-id",
+    trustProxy: options.trustProxy ?? false
   });
 
   await app.register(helmet, { global: true });
@@ -154,7 +156,7 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
 
   app.post("/v1/payments", async (request, reply) => {
     const project = requiredProject(authenticatedProjects, request);
-    const body = parseJsonBody(request.body, paymentRequestSchema);
+    const body = normalizePaymentAmount(parseJsonBody(request.body, paymentRequestSchema));
     const idempotencyKey = requiredIdempotencyKey(request);
     const claim = await options.repository.claimIdempotency(
       project.id,
@@ -274,20 +276,29 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       headers: normalizeHeaders(request.headers)
     };
     await provider.verifyWebhook(webhookInput);
-    let event;
+    let parsedEvent;
     try {
-      event = await provider.parseWebhook(webhookInput);
+      parsedEvent = await provider.parseWebhook(webhookInput);
     } catch (error) {
+      if (!(error instanceof SyntaxError || error instanceof z.ZodError)) throw error;
       request.log.info(
         { provider: provider.metadata.id, error: serializeErrorForLog(error) },
         "verified webhook event ignored because it is not supported"
       );
       return reply.code(200).send({ received: true, ignored: true });
     }
+    const payment = await provider.verifyPayment({
+      reference: parsedEvent.data.payment.reference,
+      ...(parsedEvent.data.payment.providerReference
+        ? { providerReference: parsedEvent.data.payment.providerReference }
+        : {})
+    });
+    const event = { ...parsedEvent, type: paymentEventType(payment.status), data: { payment } };
     const result = await options.repository.recordWebhookEvent(event);
     return reply.code(200).send({
       received: true,
       duplicate: !result.inserted,
+      processed: result.processed,
       eventId: event.id,
       type: event.type,
       ...(result.projectId ? { projectId: result.projectId } : {})
@@ -390,6 +401,13 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
   app.post("/v1/api-keys", async (request, reply) => {
     const project = requiredProject(authenticatedProjects, request);
     const body = parseJsonBody(request.body, z.object({ environment: z.enum(["test", "live"]) }));
+    if (project.keyEnvironment === "test" && body.environment === "live")
+      return reply.code(403).send({
+        error: {
+          code: "INSUFFICIENT_KEY_SCOPE",
+          message: "A test project key cannot create a live project key"
+        }
+      });
     const generated = generateApiKey(body.environment);
     await options.repository.createApiKey(project.id, generated.prefix, generated.hash);
     return reply.code(201).send({ key: generated.key, prefix: generated.prefix });
@@ -569,4 +587,14 @@ function canonicalJson(value: unknown): string {
       .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
       .join(",")}}`;
   return JSON.stringify(value);
+}
+function normalizePaymentAmount<T extends { amountMinor: string }>(value: T): T {
+  return { ...value, amountMinor: BigInt(value.amountMinor).toString() };
+}
+function paymentEventType(status: PaymentStatus) {
+  if (status === "succeeded") return "payment.succeeded" as const;
+  if (status === "failed" || status === "cancelled") return "payment.failed" as const;
+  if (status === "refunded" || status === "partially_refunded") return "payment.refunded" as const;
+  if (status === "processing") return "payment.processing" as const;
+  return "payment.created" as const;
 }

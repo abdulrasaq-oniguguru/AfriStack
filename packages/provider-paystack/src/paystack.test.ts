@@ -33,6 +33,7 @@ describe("Paystack adapter", () => {
     });
     expect(request.headers["Authorization"]).toBe("Bearer sk_test_secret");
     expect(payment.status).toBe("pending");
+    expect(payment.providerReference).toBeUndefined();
   });
 
   it("normalizes a verified transaction", async () => {

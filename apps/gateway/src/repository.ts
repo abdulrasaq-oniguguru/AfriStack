@@ -25,6 +25,7 @@ export interface GatewayRepository {
     responseStatus: number,
     responseBody: unknown
   ): Promise<void>;
+  releaseIdempotency(projectId: string, key: string): Promise<void>;
   savePayment(projectId: string, payment: Payment): Promise<void>;
   saveMessage(projectId: string, message: Message): Promise<void>;
   getPayment(projectId: string, reference: string): Promise<Payment | undefined>;
@@ -113,6 +114,11 @@ export class MemoryGatewayRepository implements GatewayRepository {
     record.status = "completed";
     record.responseStatus = responseStatus;
     record.responseBody = responseBody;
+  }
+  async releaseIdempotency(projectId: string, key: string): Promise<void> {
+    const storageKey = `${projectId}:${key}`;
+    if (this.#idempotency.get(storageKey)?.status === "processing")
+      this.#idempotency.delete(storageKey);
   }
 
   async savePayment(projectId: string, payment: Payment): Promise<void> {

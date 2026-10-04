@@ -101,6 +101,36 @@ describe("gateway", () => {
     expect(conflict.json<{ error: { code: string } }>().error.code).toBe("IDEMPOTENCY_CONFLICT");
   });
 
+  it("frees an idempotency key after a definitive provider rejection", async () => {
+    provider.setScenario("payment_declined");
+    expect(
+      (await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody }))
+        .statusCode
+    ).toBe(422);
+    provider.setScenario("payment_succeeded");
+    expect(
+      (await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody }))
+        .statusCode
+    ).toBe(201);
+  });
+
+  it("keeps an idempotency key locked after an ambiguous provider timeout", async () => {
+    provider.setScenario("timeout");
+    expect(
+      (await app.inject({ method: "POST", url: "/v1/payments", headers, payload: paymentBody }))
+        .statusCode
+    ).toBe(503);
+    provider.setScenario("payment_succeeded");
+    const retried = await app.inject({
+      method: "POST",
+      url: "/v1/payments",
+      headers,
+      payload: paymentBody
+    });
+    expect(retried.statusCode).toBe(409);
+    expect(retried.json<{ error: { code: string } }>().error.code).toBe("IDEMPOTENCY_IN_PROGRESS");
+  });
+
   it("executes one financial mutation for 20 concurrent identical idempotency requests", async () => {
     const slowProvider = new SlowMockPaymentProvider();
     const concurrentApp = await buildGateway({ repository, providers: [slowProvider] });

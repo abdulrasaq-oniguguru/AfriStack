@@ -133,7 +133,7 @@ export class PaystackPaymentProvider implements PaymentProvider {
       id: data.access_code,
       provider: "paystack",
       reference: data.reference,
-      providerReference: data.access_code,
+      // access_code resumes checkout but is not a transaction ID for fetch/refund operations.
       amountMinor: input.amountMinor,
       currency: input.currency,
       status: "pending",

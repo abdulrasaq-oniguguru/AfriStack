@@ -168,20 +168,25 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
         }
       });
 
-    const provider = selectProvider(providerMap, options.providers, body.provider);
-    const payment = await provider.createPayment({
-      amountMinor: body.amountMinor,
-      currency: body.currency,
-      customer: {
-        email: body.customer.email,
-        ...(body.customer.name ? { name: body.customer.name } : {}),
-        ...(body.customer.phone ? { phone: body.customer.phone } : {})
-      },
-      reference: body.reference,
+    const payment = await releaseOnDefinitiveFailure(
+      options.repository,
+      project.id,
       idempotencyKey,
-      ...(body.callbackUrl ? { callbackUrl: body.callbackUrl } : {}),
-      ...(body.metadata ? { metadata: body.metadata } : {})
-    });
+      () =>
+        selectProvider(providerMap, options.providers, body.provider).createPayment({
+          amountMinor: body.amountMinor,
+          currency: body.currency,
+          customer: {
+            email: body.customer.email,
+            ...(body.customer.name ? { name: body.customer.name } : {}),
+            ...(body.customer.phone ? { phone: body.customer.phone } : {})
+          },
+          reference: body.reference,
+          idempotencyKey,
+          ...(body.callbackUrl ? { callbackUrl: body.callbackUrl } : {}),
+          ...(body.metadata ? { metadata: body.metadata } : {})
+        })
+    );
     await options.repository.savePayment(project.id, payment);
     await options.repository.completeIdempotency(project.id, idempotencyKey, 201, payment);
     return reply.code(201).send(payment);
@@ -229,14 +234,19 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
             message: "The idempotency key cannot be used for this request"
           }
         });
-      const provider = selectProvider(providerMap, options.providers, payment.provider);
-      const refund = await provider.refundPayment({
-        reference: payment.reference,
+      const refund = await releaseOnDefinitiveFailure(
+        options.repository,
+        project.id,
         idempotencyKey,
-        ...(payment.providerReference ? { providerReference: payment.providerReference } : {}),
-        ...(body.amountMinor ? { amountMinor: body.amountMinor } : {}),
-        ...(body.reason ? { reason: body.reason } : {})
-      });
+        () =>
+          selectProvider(providerMap, options.providers, payment.provider).refundPayment({
+            reference: payment.reference,
+            idempotencyKey,
+            ...(payment.providerReference ? { providerReference: payment.providerReference } : {}),
+            ...(body.amountMinor ? { amountMinor: body.amountMinor } : {}),
+            ...(body.reason ? { reason: body.reason } : {})
+          })
+      );
       await options.repository.completeIdempotency(project.id, idempotencyKey, 201, refund);
       return reply.code(201).send(refund);
     }
@@ -467,6 +477,20 @@ function selectMessagingProvider(
       { code: "PROVIDER_NOT_CONFIGURED" }
     );
   return provider;
+}
+async function releaseOnDefinitiveFailure<T>(
+  repository: GatewayRepository,
+  projectId: string,
+  key: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof AfricaError && !error.retryable && error.code !== "MALFORMED_RESPONSE")
+      await repository.releaseIdempotency(projectId, key);
+    throw error;
+  }
 }
 function idempotencyConflict(reply: FastifyReply, state: "conflict" | "processing") {
   return reply.code(409).send({

@@ -72,6 +72,8 @@ curl -X POST http://localhost:4010/v1/payments \
 
 The Compose profile enables only the local mock. The fixed key is strictly for local development; production startup refuses to invent a bootstrap key.
 
+For a server deployment behind an existing Caddy proxy, use `docker-compose.production.yml` with the base Compose file. It removes the public `4010` mapping and joins the external `skinnai_default` network using the internal hostname `africa-gateway`.
+
 Generate a project configuration with:
 
 ```sh

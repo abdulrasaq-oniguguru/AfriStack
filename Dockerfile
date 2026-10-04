@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /workspace
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
@@ -26,7 +26,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @africa-dev/gateway... build
 RUN pnpm --filter @africa-dev/gateway deploy --prod --legacy /deploy
 
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /deploy ./

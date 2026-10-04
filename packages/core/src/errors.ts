@@ -43,11 +43,14 @@ const SECRET_PATTERNS = [
 ];
 const SENSITIVE_KEYS = new Set([
   "authorization",
-  "api_key",
   "apikey",
+  "xapikey",
   "secret",
   "secretkey",
   "webhooksecret",
+  "verifhash",
+  "clientsecret",
+  "cookie",
   "token",
   "accesstoken",
   "refreshtoken",
@@ -71,7 +74,9 @@ export function redactLogValue(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [
       key,
-      SENSITIVE_KEYS.has(key.toLowerCase()) ? "[REDACTED]" : redactLogValue(nested)
+      SENSITIVE_KEYS.has(key.toLowerCase().replaceAll(/[_-]/g, ""))
+        ? "[REDACTED]"
+        : redactLogValue(nested)
     ])
   );
 }

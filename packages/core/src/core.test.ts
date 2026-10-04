@@ -39,6 +39,22 @@ describe("core security and registry", () => {
     });
   });
 
+  it("redacts separator variants of sensitive header and webhook names", () => {
+    expect(
+      redactLogValue({
+        "x-api-key": "gateway-key",
+        "verif-hash": "flutterwave-webhook-secret",
+        client_secret: "client-secret",
+        cookie: "session=value"
+      })
+    ).toEqual({
+      "x-api-key": "[REDACTED]",
+      "verif-hash": "[REDACTED]",
+      client_secret: "[REDACTED]",
+      cookie: "[REDACTED]"
+    });
+  });
+
   it("does not serialize credential-shaped errors verbatim", () => {
     const error = new Error("Provider returned FLWSECK_TEST-super-secret");
     expect(JSON.stringify(serializeErrorForLog(error))).not.toContain("super-secret");

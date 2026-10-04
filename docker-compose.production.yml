@@ -3,3 +3,5 @@ services:
     ports: !reset []
     environment:
       NODE_ENV: production
+      GATEWAY_ALLOW_MOCK: "false"
+      GATEWAY_BOOTSTRAP_API_KEY: ${GATEWAY_BOOTSTRAP_API_KEY:?GATEWAY_BOOTSTRAP_API_KEY must be set for production}

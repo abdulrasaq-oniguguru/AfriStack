@@ -4,7 +4,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["eslint.config.js", "**/dist/**", "**/coverage/**", ".pnpm-store/**", ".corepack/**"]
+    ignores: [
+      "eslint.config.js",
+      "examples/**",
+      "**/dist/**",
+      "**/coverage/**",
+      ".pnpm-store/**",
+      ".corepack/**"
+    ]
   },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,

@@ -149,10 +149,12 @@ export class MemoryGatewayRepository implements GatewayRepository {
     const key = `${event.provider}:${event.providerEventId}`;
     if (this.#webhooks.has(key)) return { inserted: false, processed: false };
     this.#webhooks.add(key);
-    const paymentEntry = [...this.#payments.entries()].find(
+    const paymentEntries = [...this.#payments.entries()].filter(
       ([, payment]) =>
         payment.provider === event.provider && payment.reference === event.data.payment.reference
     );
+    if (paymentEntries.length !== 1) return { inserted: true, processed: false };
+    const paymentEntry = paymentEntries[0];
     if (!paymentEntry) return { inserted: true, processed: false };
     const [storageKey, stored] = paymentEntry;
     const projectId = storageKey.slice(0, storageKey.indexOf(":"));
@@ -211,8 +213,10 @@ export function canAdvancePayment(
   incoming: Payment["status"]
 ): boolean {
   if (current === incoming) return true;
-  if (["succeeded", "failed", "cancelled", "refunded", "partially_refunded"].includes(current))
-    return incoming === "refunded" || incoming === "partially_refunded";
+  if (current === "refunded") return false;
+  if (current === "partially_refunded") return incoming === "refunded";
+  if (current === "succeeded") return incoming === "partially_refunded" || incoming === "refunded";
+  if (current === "failed" || current === "cancelled") return incoming === "succeeded";
   const rank: Record<Payment["status"], number> = {
     pending: 0,
     processing: 1,

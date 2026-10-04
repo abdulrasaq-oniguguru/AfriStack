@@ -18,6 +18,7 @@ services:
     environment:
       DATABASE_URL: postgres://africa:${POSTGRES_PASSWORD:-africa_local_only}@postgres:5432/africa_dev
       GATEWAY_BOOTSTRAP_API_KEY: ${GATEWAY_BOOTSTRAP_API_KEY:-afd_test_local_development_key_change_me}
+      GATEWAY_ALLOW_MOCK: ${GATEWAY_ALLOW_MOCK:-true}
       GATEWAY_PROJECT_NAME: ${GATEWAY_PROJECT_NAME:-Local development}
       PAYMENT_PROVIDERS: ${PAYMENT_PROVIDERS:-mock}
       PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}

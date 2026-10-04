@@ -5,6 +5,7 @@ import { access, writeFile } from "node:fs/promises";
 import { realpath } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import { fileURLToPath } from "node:url";
 import { capabilities, countries } from "@africa-dev/country-data";
 import { MockPaymentProvider } from "@africa-dev/testkit";
 
@@ -159,6 +160,6 @@ async function writeNew(path: string, content: string, force: boolean): Promise<
 const entrypoint = process.argv[1]
   ? await realpath(process.argv[1]).catch(() => process.argv[1])
   : undefined;
-if (entrypoint === new URL(import.meta.url).pathname) {
+if (entrypoint === (await realpath(fileURLToPath(import.meta.url)))) {
   process.exitCode = await run();
 }

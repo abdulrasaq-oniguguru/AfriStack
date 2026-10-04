@@ -3,7 +3,7 @@ import type { MessagingProvider } from "@africa-dev/messaging-core";
 import { MockPaymentProvider } from "@africa-dev/testkit";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildGateway } from "./app.js";
-import { type Project, MemoryGatewayRepository } from "./repository.js";
+import { canAdvancePayment, type Project, MemoryGatewayRepository } from "./repository.js";
 
 const apiKey = "afd_test_local_development_key_change_me";
 let repository: MemoryGatewayRepository;
@@ -67,6 +67,12 @@ class SlowMockPaymentProvider extends MockPaymentProvider {
 }
 
 describe("gateway", () => {
+  it("allows provider-confirmed payment after a prior failed or cancelled status", () => {
+    expect(canAdvancePayment("failed", "succeeded")).toBe(true);
+    expect(canAdvancePayment("cancelled", "succeeded")).toBe(true);
+    expect(canAdvancePayment("refunded", "succeeded")).toBe(false);
+  });
+
   it("reports health without authentication and protects v1 APIs", async () => {
     expect((await app.inject({ method: "GET", url: "/health" })).statusCode).toBe(200);
     expect((await app.inject({ method: "GET", url: "/v1/countries" })).statusCode).toBe(401);
@@ -190,7 +196,7 @@ describe("gateway", () => {
       headers: { "x-api-key": apiKey }
     });
     expect(events.statusCode).toBe(200);
-    expect(events.json<{ data: Array<{ type: string }> }>().data).toEqual([
+    expect(events.json<{ data: { type: string }[] }>().data).toEqual([
       expect.objectContaining({ type: "payment.succeeded" })
     ]);
     const payment = await app.inject({
@@ -248,7 +254,7 @@ describe("gateway", () => {
       url: "/v1/events",
       headers: { "x-api-key": apiKey }
     });
-    expect(response.json<{ data: Array<{ type: string }> }>().data).toHaveLength(2);
+    expect(response.json<{ data: { type: string }[] }>().data).toHaveLength(2);
     expect(stored?.status).toBe("succeeded");
   });
 

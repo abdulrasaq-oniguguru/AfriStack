@@ -138,15 +138,17 @@ export class PostgresGatewayRepository implements GatewayRepository {
     event: CanonicalPaymentEvent
   ): Promise<{ inserted: boolean; processed: boolean; projectId?: string }> {
     return this.#sql.begin(async (sql) => {
-      const [payment] = await sql<
+      const payments = await sql<
         { project_id: string; normalized_data: Payment }[]
       >`select project_id, normalized_data from payments
         where provider = ${event.provider} and reference = ${event.data.payment.reference}
-        limit 1 for update`;
+        limit 2 for update`;
+      const payment = payments.length === 1 ? payments[0] : undefined;
       const projectId = payment?.project_id;
       const matchesPayment =
-        payment?.normalized_data.amountMinor === event.data.payment.amountMinor &&
-        payment?.normalized_data.currency === event.data.payment.currency;
+        payment !== undefined &&
+        payment.normalized_data.amountMinor === event.data.payment.amountMinor &&
+        payment.normalized_data.currency === event.data.payment.currency;
       const inserted = await sql<{ id: string }[]>`
         insert into webhook_events (id, project_id, provider, provider_event_id, event_type, normalized_data, status)
         values (${event.id}, ${projectId ?? null}, ${event.provider}, ${event.providerEventId}, ${event.type}, ${sql.json(event as never)}, ${payment && matchesPayment ? "processed" : "ignored"})
@@ -157,10 +159,10 @@ export class PostgresGatewayRepository implements GatewayRepository {
         matchesPayment &&
         canAdvancePayment(payment.normalized_data.status, event.data.payment.status)
       );
-      if (processed) {
+      if (processed && payment) {
         await sql`update payments set provider_reference = ${event.data.payment.providerReference ?? null},
           status = ${event.data.payment.status}, normalized_data = ${sql.json(event.data.payment as never)}, updated_at = now()
-          where project_id = ${payment!.project_id} and reference = ${event.data.payment.reference}`;
+          where project_id = ${payment.project_id} and reference = ${event.data.payment.reference}`;
       }
       return {
         inserted: Boolean(inserted[0]),

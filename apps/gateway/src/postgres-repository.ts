@@ -146,19 +146,18 @@ export class PostgresGatewayRepository implements GatewayRepository {
       const payment = payments.length === 1 ? payments[0] : undefined;
       const projectId = payment?.project_id;
       const matchesPayment =
-        payment !== undefined &&
-        payment.normalized_data.amountMinor === event.data.payment.amountMinor &&
-        payment.normalized_data.currency === event.data.payment.currency;
-      const inserted = await sql<{ id: string }[]>`
-        insert into webhook_events (id, project_id, provider, provider_event_id, event_type, normalized_data, status)
-        values (${event.id}, ${projectId ?? null}, ${event.provider}, ${event.providerEventId}, ${event.type}, ${sql.json(event as never)}, ${payment && matchesPayment ? "processed" : "ignored"})
-        on conflict (provider, provider_event_id) do nothing returning id`;
-      const processed = Boolean(
-        inserted[0] &&
+        payment?.normalized_data.amountMinor === event.data.payment.amountMinor &&
+        payment?.normalized_data.currency === event.data.payment.currency;
+      const canProcess = Boolean(
         payment &&
         matchesPayment &&
         canAdvancePayment(payment.normalized_data.status, event.data.payment.status)
       );
+      const inserted = await sql<{ id: string }[]>`
+        insert into webhook_events (id, project_id, provider, provider_event_id, event_type, normalized_data, status)
+        values (${event.id}, ${projectId ?? null}, ${event.provider}, ${event.providerEventId}, ${event.type}, ${sql.json(event as never)}, ${canProcess ? "processed" : "ignored"})
+        on conflict (provider, provider_event_id) do nothing returning id`;
+      const processed = Boolean(inserted[0] && canProcess);
       if (processed && payment) {
         await sql`update payments set provider_reference = ${event.data.payment.providerReference ?? null},
           status = ${event.data.payment.status}, normalized_data = ${sql.json(event.data.payment as never)}, updated_at = now()

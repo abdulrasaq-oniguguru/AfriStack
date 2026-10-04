@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const headers = { "content-type": "application/json", "x-africa-mock-signature": signature };
   const accepted = (await (
     await request("/v1/webhooks/mock", { method: "POST", headers, body: raw })
-  ).json()) as { type: string; duplicate: boolean };
+  ).json()) as { type?: string; duplicate: boolean };
   if (accepted.type !== "payment.succeeded")
     throw new Error(
       `Expected canonical payment.succeeded event, received '${accepted.type ?? "unknown"}'`

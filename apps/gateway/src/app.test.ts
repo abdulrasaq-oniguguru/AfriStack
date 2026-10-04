@@ -3,6 +3,7 @@ import type { MessagingProvider } from "@africa-dev/messaging-core";
 import { MockPaymentProvider } from "@africa-dev/testkit";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildGateway } from "./app.js";
+import { generateApiKey } from "./api-keys.js";
 import { canAdvancePayment, type Project, MemoryGatewayRepository } from "./repository.js";
 
 const apiKey = "afd_test_local_development_key_change_me";
@@ -279,6 +280,19 @@ describe("gateway", () => {
     });
     expect(response.statusCode).toBe(403);
     expect(response.json<{ error: { code: string } }>().error.code).toBe("INSUFFICIENT_KEY_SCOPE");
+  });
+
+  it("prevents a test API key from revoking a live API key", async () => {
+    const liveKey = generateApiKey("live");
+    await repository.createApiKey(project.id, liveKey.prefix, liveKey.hash);
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/v1/api-keys/${liveKey.prefix}`,
+      headers: { "x-api-key": apiKey }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json<{ error: { code: string } }>().error.code).toBe("INSUFFICIENT_KEY_SCOPE");
+    expect(await repository.authenticateApiKey(liveKey.key)).toMatchObject({ id: project.id });
   });
 
   it("sends a message and replays the idempotent canonical response", async () => {

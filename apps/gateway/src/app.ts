@@ -415,6 +415,13 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
 
   app.delete<{ Params: { prefix: string } }>("/v1/api-keys/:prefix", async (request, reply) => {
     const project = requiredProject(authenticatedProjects, request);
+    if (project.keyEnvironment === "test" && request.params.prefix.startsWith("afd_live_"))
+      return reply.code(403).send({
+        error: {
+          code: "INSUFFICIENT_KEY_SCOPE",
+          message: "A test project key cannot revoke a live project key"
+        }
+      });
     const revoked = await options.repository.revokeApiKey(project.id, request.params.prefix);
     return revoked
       ? reply.code(204).send()

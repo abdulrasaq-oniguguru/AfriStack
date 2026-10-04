@@ -147,7 +147,7 @@ export class PostgresGatewayRepository implements GatewayRepository {
       const projectId = payment?.project_id;
       const matchesPayment =
         payment?.normalized_data.amountMinor === event.data.payment.amountMinor &&
-        payment?.normalized_data.currency === event.data.payment.currency;
+        payment.normalized_data.currency === event.data.payment.currency;
       const canProcess = Boolean(
         payment &&
         matchesPayment &&

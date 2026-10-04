@@ -217,4 +217,77 @@ describe("gateway", () => {
     expect(first.json<{ status: string }>().status).toBe("sent");
     expect(replay.json()).toEqual(first.json());
   });
+
+  it("frees the idempotency key after a definitive provider rejection", async () => {
+    provider.setScenario("payment_declined");
+    const declined = await app.inject({
+      method: "POST",
+      url: "/v1/payments",
+      headers,
+      payload: paymentBody
+    });
+    expect(declined.statusCode).toBe(422);
+    provider.setScenario("payment_succeeded");
+    const retried = await app.inject({
+      method: "POST",
+      url: "/v1/payments",
+      headers,
+      payload: paymentBody
+    });
+    expect(retried.statusCode).toBe(201);
+  });
+
+  it("keeps the idempotency key locked after an ambiguous provider failure", async () => {
+    provider.setScenario("timeout");
+    const timedOut = await app.inject({
+      method: "POST",
+      url: "/v1/payments",
+      headers,
+      payload: paymentBody
+    });
+    expect(timedOut.statusCode).toBe(503);
+    provider.setScenario("payment_succeeded");
+    const retried = await app.inject({
+      method: "POST",
+      url: "/v1/payments",
+      headers,
+      payload: paymentBody
+    });
+    expect(retried.statusCode).toBe(409);
+    expect(retried.json<{ error: { code: string } }>().error.code).toBe("IDEMPOTENCY_IN_PROGRESS");
+  });
+
+  it("acknowledges correctly signed webhooks the adapter cannot normalize", async () => {
+    const raw = "{not json";
+    const signature = createHmac("sha256", "africa-dev-local-mock").update(raw).digest("hex");
+    const signed = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/mock",
+      headers: { "content-type": "application/json", "x-africa-mock-signature": signature },
+      payload: raw
+    });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json<{ ignored: boolean }>().ignored).toBe(true);
+    const forged = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/mock",
+      headers: { "content-type": "application/json", "x-africa-mock-signature": "0".repeat(64) },
+      payload: raw
+    });
+    expect(forged.statusCode).toBe(401);
+  });
+
+  it("reports framework client errors with their own status codes", async () => {
+    const unsupported = await app.inject({
+      method: "POST",
+      url: "/v1/payments",
+      headers: { ...headers, "content-type": "application/xml" },
+      payload: "<payment />"
+    });
+    expect(unsupported.statusCode).toBe(415);
+    const responses = [];
+    for (let index = 0; index < 125; index += 1)
+      responses.push(await app.inject({ method: "GET", url: "/health" }));
+    expect(responses.at(-1)?.statusCode).toBe(429);
+  });
 });

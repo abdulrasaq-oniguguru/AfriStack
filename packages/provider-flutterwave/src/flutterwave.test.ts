@@ -105,4 +105,23 @@ describe("Flutterwave adapter", () => {
       })
     ).toThrow(/signature/);
   });
+
+  it("requires a callback URL instead of redirecting customers to a placeholder", async () => {
+    const transport = vi.fn<HttpTransport>();
+    const provider = new FlutterwavePaymentProvider({
+      secretKey: "secret",
+      webhookSecret: "hook",
+      transport
+    });
+    await expect(
+      provider.createPayment({
+        amountMinor: "500001",
+        currency: "NGN",
+        customer: { email: "buyer@example.com" },
+        reference: "ORDER-1",
+        idempotencyKey: "idem-1"
+      })
+    ).rejects.toMatchObject({ code: "CALLBACK_URL_REQUIRED" });
+    expect(transport).not.toHaveBeenCalled();
+  });
 });

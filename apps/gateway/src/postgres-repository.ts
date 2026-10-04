@@ -95,6 +95,11 @@ export class PostgresGatewayRepository implements GatewayRepository {
       .#sql`update idempotency_keys set status = 'completed', response_status = ${responseStatus}, response_body = ${this.#sql.json(responseBody as never)}, completed_at = now() where project_id = ${projectId} and key = ${key}`;
   }
 
+  async releaseIdempotency(projectId: string, key: string): Promise<void> {
+    await this
+      .#sql`delete from idempotency_keys where project_id = ${projectId} and key = ${key} and status = 'processing'`;
+  }
+
   async savePayment(projectId: string, payment: Payment): Promise<void> {
     await this
       .#sql`insert into payments (id, project_id, provider, reference, provider_reference, amount_minor, currency, status, normalized_data)

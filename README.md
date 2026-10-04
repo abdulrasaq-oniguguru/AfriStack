@@ -46,7 +46,7 @@ Messaging is available through direct SDK adapters: Termii supports SMS and OTP 
 
 ## Development
 
-Requirements: Node.js 22+ and Corepack.
+Requirements: Node.js 22.6+ and Corepack.
 
 ```sh
 corepack pnpm install
@@ -81,7 +81,7 @@ No provider account or credential is needed: without a local `.env`, Compose sel
 
 The fixed key is strictly for local development; production startup refuses to invent a bootstrap key.
 
-For a server deployment behind an existing Caddy proxy, use `docker-compose.production.yml` with the base Compose file. It removes the public `4010` mapping and joins the external `skinnai_default` network using the internal hostname `africa-gateway`.
+For a server deployment behind an existing Caddy proxy, use `docker-compose.production.yml` with the base Compose file. It removes the public `4010` mapping, joins the external `skinnai_default` network using the internal hostname `africa-gateway`, and refuses to start unless `GATEWAY_BOOTSTRAP_API_KEY` and `PAYMENT_PROVIDERS` are set explicitly, so a production deployment never inherits the public local-development key or the mock provider.
 
 Generate a project configuration with:
 

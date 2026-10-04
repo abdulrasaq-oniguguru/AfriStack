@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import { access, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
+import { fileURLToPath } from "node:url";
 import { capabilities, countries } from "@africa-dev/country-data";
 import { MockPaymentProvider } from "@africa-dev/testkit";
 
@@ -155,6 +156,17 @@ async function writeNew(path: string, content: string, force: boolean): Promise<
   await writeFile(path, content, { encoding: "utf8", flag: force ? "w" : "wx" });
 }
 
-if (process.argv[1]?.endsWith("index.js")) {
+// npm and npx install the bin as a symlink, so compare resolved paths rather than the file name.
+function invokedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) {
   process.exitCode = await run();
 }

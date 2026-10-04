@@ -168,20 +168,25 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
         }
       });
 
-    const provider = selectProvider(providerMap, options.providers, body.provider);
-    const payment = await provider.createPayment({
-      amountMinor: body.amountMinor,
-      currency: body.currency,
-      customer: {
-        email: body.customer.email,
-        ...(body.customer.name ? { name: body.customer.name } : {}),
-        ...(body.customer.phone ? { phone: body.customer.phone } : {})
-      },
-      reference: body.reference,
+    const payment = await releaseOnDefinitiveFailure(
+      options.repository,
+      project.id,
       idempotencyKey,
-      ...(body.callbackUrl ? { callbackUrl: body.callbackUrl } : {}),
-      ...(body.metadata ? { metadata: body.metadata } : {})
-    });
+      () =>
+        selectProvider(providerMap, options.providers, body.provider).createPayment({
+          amountMinor: body.amountMinor,
+          currency: body.currency,
+          customer: {
+            email: body.customer.email,
+            ...(body.customer.name ? { name: body.customer.name } : {}),
+            ...(body.customer.phone ? { phone: body.customer.phone } : {})
+          },
+          reference: body.reference,
+          idempotencyKey,
+          ...(body.callbackUrl ? { callbackUrl: body.callbackUrl } : {}),
+          ...(body.metadata ? { metadata: body.metadata } : {})
+        })
+    );
     await options.repository.savePayment(project.id, payment);
     await options.repository.completeIdempotency(project.id, idempotencyKey, 201, payment);
     return reply.code(201).send(payment);
@@ -229,14 +234,19 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
             message: "The idempotency key cannot be used for this request"
           }
         });
-      const provider = selectProvider(providerMap, options.providers, payment.provider);
-      const refund = await provider.refundPayment({
-        reference: payment.reference,
+      const refund = await releaseOnDefinitiveFailure(
+        options.repository,
+        project.id,
         idempotencyKey,
-        ...(payment.providerReference ? { providerReference: payment.providerReference } : {}),
-        ...(body.amountMinor ? { amountMinor: body.amountMinor } : {}),
-        ...(body.reason ? { reason: body.reason } : {})
-      });
+        () =>
+          selectProvider(providerMap, options.providers, payment.provider).refundPayment({
+            reference: payment.reference,
+            idempotencyKey,
+            ...(payment.providerReference ? { providerReference: payment.providerReference } : {}),
+            ...(body.amountMinor ? { amountMinor: body.amountMinor } : {}),
+            ...(body.reason ? { reason: body.reason } : {})
+          })
+      );
       await options.repository.completeIdempotency(project.id, idempotencyKey, 201, refund);
       return reply.code(201).send(refund);
     }
@@ -248,11 +258,21 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
       return reply.code(404).send({
         error: { code: "PROVIDER_NOT_CONFIGURED", message: "Provider is not configured" }
       });
-    const rawBody = requireRawBody(request.body);
-    const event = await provider.parseWebhook({
-      rawBody,
+    const input = {
+      rawBody: requireRawBody(request.body),
       headers: normalizeHeaders(request.headers)
-    });
+    };
+    await provider.verifyWebhook(input);
+    let event: Awaited<ReturnType<PaymentProvider["parseWebhook"]>>;
+    try {
+      event = await provider.parseWebhook(input);
+    } catch (error) {
+      // The signature is valid, so the provider sent this. Acknowledge event types or shapes the
+      // adapter cannot normalize instead of returning an error that makes the provider retry.
+      if (!(error instanceof SyntaxError || error instanceof z.ZodError)) throw error;
+      request.log.warn({ provider: provider.metadata.id }, "ignored unsupported webhook payload");
+      return reply.code(200).send({ received: true, ignored: true });
+    }
     const inserted = await options.repository.insertWebhookEvent(event);
     return reply
       .code(200)
@@ -271,18 +291,19 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
     );
     if (claim.state === "replay") return reply.code(claim.responseStatus).send(claim.responseBody);
     if (claim.state !== "claimed") return idempotencyConflict(reply, claim.state);
-    const provider = selectMessagingProvider(
-      messagingProviderMap,
-      messagingProviders,
-      body.provider
-    );
-    const message = await provider.sendSms({
-      recipient: body.recipient,
-      message: body.message,
+    const message = await releaseOnDefinitiveFailure(
+      options.repository,
+      project.id,
       idempotencyKey,
-      senderId: body.senderId,
-      ...(body.transactional !== undefined ? { transactional: body.transactional } : {})
-    });
+      () =>
+        selectMessagingProvider(messagingProviderMap, messagingProviders, body.provider).sendSms({
+          recipient: body.recipient,
+          message: body.message,
+          idempotencyKey,
+          senderId: body.senderId,
+          ...(body.transactional !== undefined ? { transactional: body.transactional } : {})
+        })
+    );
     await options.repository.saveMessage(project.id, message);
     await options.repository.completeIdempotency(project.id, idempotencyKey, 201, message);
     return reply.code(201).send(message);
@@ -300,25 +321,32 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
     );
     if (claim.state === "replay") return reply.code(claim.responseStatus).send(claim.responseBody);
     if (claim.state !== "claimed") return idempotencyConflict(reply, claim.state);
-    const provider = selectMessagingProvider(
-      messagingProviderMap,
-      messagingProviders,
-      body.provider
+    const otp = await releaseOnDefinitiveFailure(
+      options.repository,
+      project.id,
+      idempotencyKey,
+      () => {
+        const provider = selectMessagingProvider(
+          messagingProviderMap,
+          messagingProviders,
+          body.provider
+        );
+        if (!provider.sendOtp)
+          throw new InvalidRequestError("Selected provider does not support OTP delivery", {
+            code: "OTP_NOT_SUPPORTED",
+            provider: provider.metadata.id
+          });
+        return provider.sendOtp({
+          recipient: body.recipient,
+          senderId: body.senderId,
+          message: body.message,
+          pinPlaceholder: "<pin>",
+          ...(body.pinLength ? { pinLength: body.pinLength } : {}),
+          ...(body.ttlMinutes ? { ttlMinutes: body.ttlMinutes } : {}),
+          ...(body.attempts ? { attempts: body.attempts } : {})
+        });
+      }
     );
-    if (!provider.sendOtp)
-      throw new InvalidRequestError("Selected provider does not support OTP delivery", {
-        code: "OTP_NOT_SUPPORTED",
-        provider: provider.metadata.id
-      });
-    const otp = await provider.sendOtp({
-      recipient: body.recipient,
-      senderId: body.senderId,
-      message: body.message,
-      pinPlaceholder: "<pin>",
-      ...(body.pinLength ? { pinLength: body.pinLength } : {}),
-      ...(body.ttlMinutes ? { ttlMinutes: body.ttlMinutes } : {}),
-      ...(body.attempts ? { attempts: body.attempts } : {})
-    });
     await options.repository.completeIdempotency(project.id, idempotencyKey, 201, otp);
     return reply.code(201).send(otp);
   });
@@ -380,6 +408,24 @@ export async function buildGateway(options: BuildGatewayOptions): Promise<Fastif
           message: redactSecrets(error.message),
           provider: error.provider,
           retryable: error.retryable,
+          requestId: request.id
+        }
+      });
+    // Framework/plugin client errors (rate limit, body too large, unsupported media type) keep
+    // their status instead of being reported as internal errors.
+    const { statusCode, code, message } = error as {
+      statusCode?: unknown;
+      code?: unknown;
+      message?: unknown;
+    };
+    if (typeof statusCode === "number" && statusCode >= 400 && statusCode < 500)
+      return reply.code(statusCode).send({
+        error: {
+          code: typeof code === "string" ? code : "REQUEST_ERROR",
+          message:
+            typeof message === "string"
+              ? redactSecrets(message)
+              : "The request could not be processed",
           requestId: request.id
         }
       });
@@ -467,6 +513,26 @@ function selectMessagingProvider(
       { code: "PROVIDER_NOT_CONFIGURED" }
     );
   return provider;
+}
+/**
+ * Frees the idempotency key when the operation definitely did not reach a completed provider
+ * mutation, so the client can retry with the same key. Ambiguous failures (timeouts, network
+ * errors, 5xx, malformed provider responses, unexpected errors) keep the key locked because the
+ * provider may already have acted.
+ */
+async function releaseOnDefinitiveFailure<T>(
+  repository: GatewayRepository,
+  projectId: string,
+  key: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof AfricaError && !error.retryable && error.code !== "MALFORMED_RESPONSE")
+      await repository.releaseIdempotency(projectId, key);
+    throw error;
+  }
 }
 function idempotencyConflict(reply: FastifyReply, state: "conflict" | "processing") {
   return reply.code(409).send({

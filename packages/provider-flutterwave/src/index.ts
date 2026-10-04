@@ -124,11 +124,16 @@ export class FlutterwavePaymentProvider implements PaymentProvider {
   }
 
   async createPayment(input: CreatePaymentInput): Promise<Payment> {
+    if (!input.callbackUrl)
+      throw new InvalidRequestError("Flutterwave hosted checkout requires a callbackUrl", {
+        provider: "flutterwave",
+        code: "CALLBACK_URL_REQUIRED"
+      });
     const response = await this.#request("POST", "/payments", {
       tx_ref: input.reference,
       amount: minorToMajor(input.amountMinor, input.currency),
       currency: input.currency,
-      redirect_url: input.callbackUrl ?? "https://example.invalid/payment-callback",
+      redirect_url: input.callbackUrl,
       customer: {
         email: input.customer.email,
         ...(input.customer.name ? { name: input.customer.name } : {}),

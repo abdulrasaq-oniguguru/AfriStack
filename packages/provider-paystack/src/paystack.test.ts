@@ -33,6 +33,8 @@ describe("Paystack adapter", () => {
     });
     expect(request.headers["Authorization"]).toBe("Bearer sk_test_secret");
     expect(payment.status).toBe("pending");
+    // The access code is not a transaction ID; refunds must fall back to the reference.
+    expect(payment.providerReference).toBeUndefined();
   });
 
   it("normalizes a verified transaction", async () => {

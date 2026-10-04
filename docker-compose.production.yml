@@ -1,6 +1,10 @@
 services:
   gateway:
     ports: !reset []
+    environment:
+      # Production must never fall back to the public local-development key or the mock provider.
+      GATEWAY_BOOTSTRAP_API_KEY: ${GATEWAY_BOOTSTRAP_API_KEY:?Set GATEWAY_BOOTSTRAP_API_KEY to a long random afd_live_ key}
+      PAYMENT_PROVIDERS: ${PAYMENT_PROVIDERS:?Set PAYMENT_PROVIDERS, for example paystack}
     networks:
       default: {}
       skinnai_default:

@@ -87,7 +87,9 @@ export class AfricasTalkingMessagingProvider implements MessagingProvider {
         });
       const raw = responseSchema.parse(response.body);
       const recipient = raw.SMSMessageData.Recipients[0];
-      const status = recipient?.status?.toLowerCase() === "success" ? "sent" : "queued";
+      // Africa's Talking reports accepted messages as "Success"; any other recipient status
+      // (InvalidPhoneNumber, InsufficientBalance, ...) or no recipient at all is a rejection.
+      const status = recipient?.status?.toLowerCase() === "success" ? "sent" : "failed";
       return {
         id: recipient?.messageId ?? input.idempotencyKey,
         provider: "africastalking",

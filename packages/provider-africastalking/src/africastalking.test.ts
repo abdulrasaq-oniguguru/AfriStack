@@ -29,4 +29,26 @@ describe("Africa's Talking adapter", () => {
     expect(request?.body).toContain("username=sandbox");
     expect(result).toMatchObject({ status: "sent", providerReference: "at-1" });
   });
+
+  it("reports rejected recipients as failed", async () => {
+    const transport: HttpTransport = async () => ({
+      status: 201,
+      headers: new Headers(),
+      body: {
+        SMSMessageData: { Recipients: [{ number: "+2347000000000", status: "InvalidPhoneNumber" }] }
+      }
+    });
+    const provider = new AfricasTalkingMessagingProvider({
+      apiKey: "key",
+      username: "sandbox",
+      transport
+    });
+    const result = await provider.sendSms({
+      recipient: "+2347000000000",
+      senderId: "Africa",
+      message: "Hello",
+      idempotencyKey: "idem"
+    });
+    expect(result.status).toBe("failed");
+  });
 });

@@ -1,0 +1,9 @@
+name: New country
+description: Propose verified country/provider coverage
+body:
+  - type: input
+    attributes: { label: Country }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Official sources, currencies, and provider capabilities }
+    validations: { required: true }

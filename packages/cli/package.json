@@ -1,0 +1,28 @@
+{
+  "name": "@africa-dev/cli",
+  "version": "0.1.0-alpha.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "africa-dev": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean"
+  },
+  "dependencies": {
+    "@africa-dev/country-data": "workspace:^",
+    "@africa-dev/testkit": "workspace:^"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.0"
+  }
+}

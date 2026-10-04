@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "useUnknownInCatchVariables": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@africa-dev/core": ["packages/core/src/index.ts"],
+      "@africa-dev/country-data": ["packages/country-data/src/index.ts"],
+      "@africa-dev/payments-core": ["packages/payments-core/src/index.ts"],
+      "@africa-dev/messaging-core": ["packages/messaging-core/src/index.ts"],
+      "@africa-dev/provider-termii": ["packages/provider-termii/src/index.ts"],
+      "@africa-dev/provider-africastalking": ["packages/provider-africastalking/src/index.ts"],
+      "@africa-dev/testkit": ["packages/testkit/src/index.ts"],
+      "@africa-dev/provider-paystack": ["packages/provider-paystack/src/index.ts"],
+      "@africa-dev/provider-flutterwave": ["packages/provider-flutterwave/src/index.ts"],
+      "@africa-dev/sdk": ["packages/sdk/src/index.ts"]
+    }
+  },
+  "include": ["packages/**/*.ts", "apps/**/*.ts", "vitest.config.ts"]
+}

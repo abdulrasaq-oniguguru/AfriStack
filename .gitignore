@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.turbo/
+.pnpm-store/
+.corepack/
+*.log
+.idea/
+.venv/
+

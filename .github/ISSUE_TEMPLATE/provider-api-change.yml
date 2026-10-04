@@ -1,0 +1,12 @@
+name: Provider API change
+description: Report a breaking or security-relevant provider change
+body:
+  - type: input
+    attributes: { label: Official announcement or documentation URL }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Affected adapter behavior }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Date observed }
+    validations: { required: true }

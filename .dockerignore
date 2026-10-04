@@ -1,0 +1,10 @@
+.git
+.idea
+.venv
+.corepack
+.pnpm-store
+node_modules
+**/dist
+coverage
+.env
+*.log

@@ -1,0 +1,16 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+body:
+  - type: textarea
+    attributes:
+      {
+        label: Reproduction,
+        description: Include minimal code and sanitized logs. Never include credentials or payment data.
+      }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Expected behavior }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Package version }
+    validations: { required: true }

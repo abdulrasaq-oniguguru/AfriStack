@@ -1,0 +1,12 @@
+name: Provider request
+description: Propose a provider based on verifiable demand and documentation
+body:
+  - type: input
+    attributes: { label: Provider and official documentation URL }
+    validations: { required: true }
+  - type: input
+    attributes: { label: Countries and capabilities }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Sandbox and webhook details }
+    validations: { required: true }

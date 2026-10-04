@@ -1,0 +1,32 @@
+{
+  "name": "@africa-dev/gateway",
+  "version": "0.1.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsup src/server.ts --format esm --clean",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@africa-dev/core": "workspace:^",
+    "@africa-dev/country-data": "workspace:^",
+    "@africa-dev/messaging-core": "workspace:^",
+    "@africa-dev/provider-africastalking": "workspace:^",
+    "@africa-dev/payments-core": "workspace:^",
+    "@africa-dev/provider-flutterwave": "workspace:^",
+    "@africa-dev/provider-paystack": "workspace:^",
+    "@africa-dev/provider-termii": "workspace:^",
+    "@africa-dev/testkit": "workspace:^",
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "fastify": "^5.0.0",
+    "postgres": "^3.4.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "tsup": "^8.5.0"
+  }
+}

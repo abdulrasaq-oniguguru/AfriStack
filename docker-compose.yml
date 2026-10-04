@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: africa_dev
+      POSTGRES_USER: africa
+      POSTGRES_PASSWORD: africa_local_only
+    volumes:
+      - gateway-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U africa -d africa_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  gateway:
+    build: .
+    environment:
+      DATABASE_URL: postgres://africa:africa_local_only@postgres:5432/africa_dev
+      GATEWAY_BOOTSTRAP_API_KEY: ${GATEWAY_BOOTSTRAP_API_KEY:-afd_test_local_development_key_change_me}
+      GATEWAY_PROJECT_NAME: ${GATEWAY_PROJECT_NAME:-Local development}
+      PAYMENT_PROVIDERS: ${PAYMENT_PROVIDERS:-mock}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      FLW_SECRET_KEY: ${FLW_SECRET_KEY:-}
+      FLW_WEBHOOK_SECRET: ${FLW_WEBHOOK_SECRET:-}
+      MESSAGING_PROVIDERS: ${MESSAGING_PROVIDERS:-}
+      TERMII_API_KEY: ${TERMII_API_KEY:-}
+      TERMII_BASE_URL: ${TERMII_BASE_URL:-}
+      AFRICASTALKING_API_KEY: ${AFRICASTALKING_API_KEY:-}
+      AFRICASTALKING_USERNAME: ${AFRICASTALKING_USERNAME:-}
+      AFRICA_COUNTRY: ${AFRICA_COUNTRY:-NG}
+      PORT: 4010
+    ports:
+      - "4010:4010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  gateway-postgres:

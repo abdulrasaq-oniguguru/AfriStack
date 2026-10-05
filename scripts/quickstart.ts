@@ -35,6 +35,8 @@ async function main(): Promise<void> {
     })
   });
   const payment = (await paymentResponse.json()) as { reference: string; status: string };
+  if (payment.status !== "succeeded")
+    throw new Error(`Expected mock payment to succeed, received '${payment.status}'`);
   console.log(`✓ Mock payment created (${payment.status})`);
 
   const verified = (await (
@@ -42,6 +44,8 @@ async function main(): Promise<void> {
       headers: { "x-api-key": apiKey }
     })
   ).json()) as { status: string };
+  if (verified.status !== "succeeded")
+    throw new Error(`Expected verified payment to succeed, received '${verified.status}'`);
   console.log(`✓ Payment verified (${verified.status})`);
 
   const raw = JSON.stringify({
@@ -53,13 +57,29 @@ async function main(): Promise<void> {
   const headers = { "content-type": "application/json", "x-africa-mock-signature": signature };
   const accepted = (await (
     await request("/v1/webhooks/mock", { method: "POST", headers, body: raw })
-  ).json()) as { type?: string; duplicate: boolean };
+  ).json()) as { eventId?: string; type?: string; duplicate: boolean; processed?: boolean };
   if (accepted.type !== "payment.succeeded")
     throw new Error(
       `Expected canonical payment.succeeded event, received '${accepted.type ?? "unknown"}'`
     );
+  if (accepted.processed !== true) throw new Error("Expected webhook event to update its payment");
+  if (!accepted.eventId)
+    throw new Error("Expected webhook response to include its canonical event ID");
   console.log("✓ Webhook accepted");
   console.log(`✓ Canonical event: ${accepted.type}`);
+
+  const events = (await (
+    await request("/v1/events", { headers: { "x-api-key": apiKey } })
+  ).json()) as {
+    data?: { id: string; processingStatus: string; type: string }[];
+  };
+  const persistedEvent = events.data?.find((event) => event.id === accepted.eventId);
+  if (
+    persistedEvent?.type !== "payment.succeeded" ||
+    persistedEvent.processingStatus !== "processed"
+  )
+    throw new Error("Expected processed webhook event to be available through /v1/events");
+  console.log("✓ Processed event available");
 
   const duplicate = (await (
     await request("/v1/webhooks/mock", { method: "POST", headers, body: raw })

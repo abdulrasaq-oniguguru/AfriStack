@@ -63,7 +63,7 @@ The local Docker image rebuild was interrupted during dependency installation in
 
 ## Deferred after the RC
 
-- Versioned database migrations.
+- A dedicated upgraded-database migration fixture in CI.
 - Removing plaintext recipient data from message persistence.
 - Publish-ready package metadata and `npm pack` validation.
 - Ascending event polling semantics and environment-specific provider credentials.

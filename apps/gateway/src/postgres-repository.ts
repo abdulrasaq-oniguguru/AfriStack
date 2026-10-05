@@ -18,7 +18,23 @@ export class PostgresGatewayRepository implements GatewayRepository {
   }
 
   async migrate(): Promise<void> {
-    await this.#sql.unsafe(SCHEMA);
+    await this.#sql`
+      create table if not exists schema_migrations (
+        id text primary key,
+        applied_at timestamptz not null default now()
+      )`;
+    const applied = new Set(
+      (await this.#sql<{ id: string }[]>`select id from schema_migrations`).map(
+        (migration) => migration.id
+      )
+    );
+    for (const migration of MIGRATIONS) {
+      if (applied.has(migration.id)) continue;
+      await this.#sql.begin(async (sql) => {
+        await sql.unsafe(migration.sql);
+        await sql`insert into schema_migrations (id) values (${migration.id})`;
+      });
+    }
   }
 
   async bootstrapProject(name: string, key: string): Promise<Project> {
@@ -216,18 +232,28 @@ export class PostgresGatewayRepository implements GatewayRepository {
   }
 }
 
-const SCHEMA = `
+const MIGRATIONS = [
+  {
+    id: "0001_initial",
+    sql: `
 create table if not exists projects (id uuid primary key, name text not null, created_at timestamptz not null default now());
 create table if not exists project_api_keys (id uuid primary key, project_id uuid not null references projects(id), prefix text not null, key_hash text not null, created_at timestamptz not null default now(), last_used_at timestamptz, revoked_at timestamptz);
 create index if not exists project_api_keys_prefix_idx on project_api_keys(prefix) where revoked_at is null;
 create table if not exists provider_connections (id uuid primary key, project_id uuid not null references projects(id), provider text not null, environment text not null, secret_reference text not null, created_at timestamptz not null default now(), unique(project_id, provider, environment));
 create table if not exists payments (id text primary key, project_id uuid not null references projects(id), provider text not null, reference text not null, provider_reference text, amount_minor numeric(78,0) not null, currency char(3) not null, status text not null, normalized_data jsonb not null, created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(project_id, reference));
 create table if not exists refunds (id text primary key, project_id uuid not null references projects(id), payment_id text not null references payments(id), provider text not null, amount_minor numeric(78,0) not null, currency char(3) not null, status text not null, normalized_data jsonb not null, created_at timestamptz not null default now());
-create table if not exists webhook_events (id text primary key, project_id uuid references projects(id), provider text not null, provider_event_id text not null, event_type text not null, normalized_data jsonb not null, status text not null, received_at timestamptz not null default now(), processed_at timestamptz, unique(provider, provider_event_id));
-alter table webhook_events add column if not exists project_id uuid references projects(id);
-create index if not exists webhook_events_project_received_idx on webhook_events(project_id, received_at desc, id desc);
+create table if not exists webhook_events (id text primary key, provider text not null, provider_event_id text not null, event_type text not null, normalized_data jsonb not null, status text not null, received_at timestamptz not null default now(), processed_at timestamptz, unique(provider, provider_event_id));
 create table if not exists webhook_attempts (id uuid primary key, webhook_event_id text not null references webhook_events(id), attempt integer not null, status text not null, error_code text, created_at timestamptz not null default now());
 create table if not exists messages (id text primary key, project_id uuid not null references projects(id), provider text not null, recipient_hash text not null, status text not null, normalized_data jsonb not null, created_at timestamptz not null default now());
 create table if not exists idempotency_keys (project_id uuid not null references projects(id), key text not null, operation text not null, request_hash text not null, status text not null, response_status integer, response_body jsonb, created_at timestamptz not null default now(), completed_at timestamptz, primary key(project_id, key));
 create table if not exists audit_events (id uuid primary key, project_id uuid not null references projects(id), action text not null, actor_key_prefix text, target_type text, target_id text, metadata jsonb not null default '{}', created_at timestamptz not null default now());
-`;
+`
+  },
+  {
+    id: "0002_webhook_events_project_scope",
+    sql: `
+alter table webhook_events add column if not exists project_id uuid references projects(id);
+create index if not exists webhook_events_project_received_idx on webhook_events(project_id, received_at desc, id desc);
+`
+  }
+] as const;

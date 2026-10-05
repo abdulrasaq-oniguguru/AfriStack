@@ -118,7 +118,7 @@ instances initialize a fresh database together.
 
 ## M2.2 — concurrent bootstrap project creation remediation
 
-**Status:** Ready for review
+**Status:** Reviewed — approved
 
 **Scope:** Bootstrap project creation now takes a dedicated transaction-scoped
 advisory lock before checking for the bootstrap key prefix and inserting a
@@ -134,6 +134,11 @@ the service deliberately does not attempt an unsafe automatic project merge.
   acquired.
 - Confirm the duplicate-prefix diagnostic is accurate and does not imply an
   automatic safe remediation.
+
+**Claude review:** Claude reviewed commit `6bd1a39` in [GitHub Actions run
+#20](https://github.com/abdulrasaq-oniguguru/AfriStack/actions/runs/37297081523).
+The three-gateway fresh-database test created exactly one project and one
+bootstrap key in all eight runs. M2 is complete.
 
 ## Planned subsequent review boundaries
 

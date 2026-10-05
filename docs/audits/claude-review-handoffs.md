@@ -180,4 +180,32 @@ The minor lockfile formatting issue is resolved through `.prettierignore`.
 | M4 — provider certification | Flutterwave sandbox script has passed with opt-in credentials | Request mapping, webhook verification, and evidence hygiene |
 | M5 — release candidate      | CI is green and all earlier review findings are resolved      | Cross-cutting release readiness                             |
 
+## M4 — Flutterwave sandbox certification
+
+**Status:** In progress — blocked on rotated deployed credentials
+
+**Completed evidence (2026-10-05):** A Flutterwave V3 hosted sandbox checkout
+was created with the gateway root as its callback. The test payment completed,
+and provider-side verification returned `succeeded` for reference
+`AFRISTACK-CERT-beaf5bd5-f34f-40bb-a761-3e2a75492689`.
+
+**Webhook blocker:** A controlled signed POST to
+`https://gateway.skinnai.com/v1/webhooks/flutterwave` reached the public
+gateway, which responded `PROVIDER_NOT_CONFIGURED`. The public deployment must
+be restarted with `PAYMENT_PROVIDERS=flutterwave`, a rotated
+`FLW_SECRET_KEY`, and a rotated `FLW_WEBHOOK_SECRET`. Credentials must be set
+only in deployment secrets or an uncommitted server environment file; they must
+not be placed in source control or chat.
+
+**Resume procedure:**
+
+1. Rotate the previously exposed test credentials and webhook hash in their
+   provider dashboards.
+2. Deploy the rotated Flutterwave variables with `PAYMENT_PROVIDERS=flutterwave`.
+3. Re-run the controlled signed POST and expect HTTP `200`.
+4. Resend the successful sandbox transaction webhook from Flutterwave and
+   record its HTTP `200` delivery in the provider dashboard.
+5. Update Flutterwave documentation/readiness status only after both checks
+   succeed; then prepare M4 for Claude review.
+
 Do not treat a Claude review as a sandbox certification or a substitute for CI.

@@ -58,7 +58,10 @@ The local Docker image rebuild was interrupted during dependency installation in
 1. Confirm GitHub Actions is green for `8fcb843`, especially the Docker build.
 2. Review the newly added clean Docker mock smoke test in CI and confirm its first
    remote run is green.
-3. Obtain a real Flutterwave sandbox certification run. Do not claim Flutterwave sandbox certification before it succeeds.
+3. Complete the webhook portion of the Flutterwave sandbox certification after
+   rotated credentials are deployed with Flutterwave enabled. Hosted checkout
+   and provider-side transaction verification have passed; do not claim full
+   certification before signed webhook delivery succeeds.
 4. Create the release-candidate notes and package audits before publishing or tagging a final `v0.1.0`.
 
 ## Deferred after the RC

@@ -140,6 +140,31 @@ the service deliberately does not attempt an unsafe automatic project merge.
 The three-gateway fresh-database test created exactly one project and one
 bootstrap key in all eight runs. M2 is complete.
 
+## M3 — publishable packages
+
+**Status:** Ready for review
+
+**Scope:** Every public `@africa-dev/*` package now declares a description,
+repository directory, homepage, bug tracker, keywords, Node `>=22` support, and
+public scoped publish access. Tarballs are limited to `dist`, `README.md`,
+`LICENSE`, and `package.json`; `prepack` builds before every pack. Changesets is
+installed and targets the repository's `master` branch. The gateway remains
+private.
+
+**Evidence (2026-10-05):** All 11 public packages were packed into local
+tarballs. The SDK and CLI packed manifests rewrite `workspace:^` dependencies
+to `^0.1.0-alpha.0`. All tarballs installed together in a new empty npm project,
+where `@africa-dev/sdk` imported successfully and `npm exec -- africa-dev
+providers` completed successfully. The CLI bundle retains its Node shebang.
+
+**Reviewer checklist:**
+
+- Inspect every tarball for only declared release assets; no source, tests,
+  source maps, or environment files.
+- Confirm all package metadata and `publishConfig.access` values are present.
+- Confirm the complete tarball-set consumer install and SDK/CLI smoke results.
+- Confirm `@africa-dev` scope access and that `apps/gateway` remains private.
+
 ## Planned subsequent review boundaries
 
 | Milestone                   | Review trigger                                                | Expected focus                                              |

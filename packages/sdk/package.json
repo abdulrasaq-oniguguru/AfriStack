@@ -1,8 +1,30 @@
 {
   "name": "@africa-dev/sdk",
   "version": "0.1.0-alpha.0",
+  "description": "Provider-neutral SDK for African payment and messaging integrations.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulrasaq-oniguguru/AfriStack.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/abdulrasaq-oniguguru/AfriStack#readme",
+  "bugs": {
+    "url": "https://github.com/abdulrasaq-oniguguru/AfriStack/issues"
+  },
+  "keywords": [
+    "africa",
+    "payments",
+    "messaging",
+    "sdk"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,10 +32,13 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean"
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "prepack": "corepack pnpm run build"
   },
   "dependencies": {
     "@africa-dev/core": "workspace:^",

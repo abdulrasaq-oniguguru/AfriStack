@@ -4,8 +4,10 @@ export interface SecretProvider {
   get(name: string): Promise<string>;
 }
 
+export type Environment = Readonly<Record<string, string | undefined>>;
+
 export class EnvironmentSecretProvider implements SecretProvider {
-  constructor(private readonly environment: NodeJS.ProcessEnv = process.env) {}
+  constructor(private readonly environment: Environment = process.env) {}
 
   async get(name: string): Promise<string> {
     const value = this.environment[name];

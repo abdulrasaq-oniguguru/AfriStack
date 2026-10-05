@@ -23,6 +23,7 @@
     "check": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm build"
   },
   "devDependencies": {
+    "@changesets/cli": "2.29.7",
     "@eslint/js": "^9.37.0",
     "@types/node": "^22.18.8",
     "eslint": "^9.37.0",
@@ -33,5 +34,20 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.1",
     "vitest": "^3.2.4"
-  }
+  },
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdulrasaq-oniguguru/AfriStack.git"
+  },
+  "keywords": [],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/abdulrasaq-oniguguru/AfriStack/issues"
+  },
+  "homepage": "https://github.com/abdulrasaq-oniguguru/AfriStack#readme"
 }

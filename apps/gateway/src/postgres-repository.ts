@@ -18,23 +18,24 @@ export class PostgresGatewayRepository implements GatewayRepository {
   }
 
   async migrate(): Promise<void> {
-    await this.#sql`
-      create table if not exists schema_migrations (
-        id text primary key,
-        applied_at timestamptz not null default now()
-      )`;
-    const applied = new Set(
-      (await this.#sql<{ id: string }[]>`select id from schema_migrations`).map(
-        (migration) => migration.id
-      )
-    );
-    for (const migration of MIGRATIONS) {
-      if (applied.has(migration.id)) continue;
-      await this.#sql.begin(async (sql) => {
+    await this.#sql.begin(async (sql) => {
+      await sql`select pg_advisory_xact_lock(hashtext('africa-dev-gateway:migrations'))`;
+      await sql`
+        create table if not exists schema_migrations (
+          id text primary key,
+          applied_at timestamptz not null default now()
+        )`;
+      const applied = new Set(
+        (await sql<{ id: string }[]>`select id from schema_migrations`).map(
+          (migration) => migration.id
+        )
+      );
+      for (const migration of MIGRATIONS) {
+        if (applied.has(migration.id)) continue;
         await sql.unsafe(migration.sql);
         await sql`insert into schema_migrations (id) values (${migration.id})`;
-      });
-    }
+      }
+    });
   }
 
   async bootstrapProject(name: string, key: string): Promise<Project> {

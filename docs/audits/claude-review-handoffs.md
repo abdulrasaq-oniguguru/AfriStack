@@ -58,7 +58,7 @@ docker compose down --volumes --remove-orphans
 
 ## M2 — transactional database migrations and stronger smoke assertions
 
-**Status:** Ready for review
+**Status:** Reviewed — approved with one required follow-up
 
 **Scope:** The gateway now records ordered schema migrations in
 `schema_migrations` and applies each migration plus its ledger record in one
@@ -86,6 +86,30 @@ pre-migration Postgres volume, recorded `0001_initial` and
   the current absence of a cross-instance advisory lock.
 - Confirm the stronger quickstart checks the actual webhook-processing and
   event-polling contract, using the canonical event ID returned by the gateway.
+
+**Claude review:** Claude reviewed commit `e37058b` in [GitHub Actions run
+#18](https://github.com/abdulrasaq-oniguguru/AfriStack/actions/runs/37294267472).
+Fresh, restarted, and both legacy-database adoption paths passed; CI and the
+stronger quickstart passed. One required follow-up remains before M5: serialize
+concurrent gateway startup migrations.
+
+## M2.1 — concurrent migration startup remediation
+
+**Status:** Ready for review
+
+**Scope:** The whole migration sequence now executes in one transaction after
+taking `pg_advisory_xact_lock(hashtext('africa-dev-gateway:migrations'))`.
+Concurrent instances wait for the first migrator, then read the completed
+ledger. The migration guide now documents this behavior and explains why legacy
+events with no safely attributable project remain hidden from project-scoped
+event polling.
+
+**Reviewer checklist:**
+
+- Confirm the advisory lock is acquired before `schema_migrations` is created.
+- Confirm the lock lifetime and the outer transaction prevent concurrent DDL
+  races without leaving a partially applied migration ledger.
+- Confirm the operator guidance no longer requires a single-instance startup.
 
 ## Planned subsequent review boundaries
 

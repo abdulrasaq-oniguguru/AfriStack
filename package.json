@@ -19,6 +19,7 @@
     "format:check": "prettier --check .",
     "dev:gateway": "corepack pnpm --filter @africa-dev/gateway dev",
     "quickstart": "tsx scripts/quickstart.ts",
+    "sync:licenses": "node scripts/sync-package-licenses.mjs",
     "cli": "corepack pnpm --filter @africa-dev/cli exec africa-dev",
     "check": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm build"
   },

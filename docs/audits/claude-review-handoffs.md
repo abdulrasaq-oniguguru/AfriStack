@@ -142,7 +142,7 @@ bootstrap key in all eight runs. M2 is complete.
 
 ## M3 — publishable packages
 
-**Status:** Ready for review
+**Status:** Reviewed — approved with one pre-publish requirement
 
 **Scope:** Every public `@africa-dev/*` package now declares a description,
 repository directory, homepage, bug tracker, keywords, Node `>=22` support, and
@@ -164,6 +164,13 @@ providers` completed successfully. The CLI bundle retains its Node shebang.
 - Confirm all package metadata and `publishConfig.access` values are present.
 - Confirm the complete tarball-set consumer install and SDK/CLI smoke results.
 - Confirm `@africa-dev` scope access and that `apps/gateway` remains private.
+
+**Claude review:** Claude reviewed commit `59f291b` in [GitHub Actions run
+#22](https://github.com/abdulrasaq-oniguguru/AfriStack/actions/runs/37321759835).
+M3 was approved with one pre-publish requirement: each tarball must ship the
+full Apache-2.0 text, not a link to it. Package licenses now match the root
+`LICENSE` and are checked by `pnpm sync:licenses`; M5 must revalidate this.
+The minor lockfile formatting issue is resolved through `.prettierignore`.
 
 ## Planned subsequent review boundaries
 

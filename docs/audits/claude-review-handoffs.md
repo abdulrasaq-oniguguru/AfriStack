@@ -82,8 +82,7 @@ pre-migration Postgres volume, recorded `0001_initial` and
   marked applied.
 - Confirm an existing deployment with no migration ledger can adopt both
   migrations without data loss.
-- Confirm the documented forward-only operator policy is accurate, including
-  the current absence of a cross-instance advisory lock.
+- Confirm the documented forward-only operator policy is accurate.
 - Confirm the stronger quickstart checks the actual webhook-processing and
   event-polling contract, using the canonical event ID returned by the gateway.
 
@@ -95,7 +94,7 @@ concurrent gateway startup migrations.
 
 ## M2.1 — concurrent migration startup remediation
 
-**Status:** Ready for review
+**Status:** Reviewed — migration race fixed; one required follow-up
 
 **Scope:** The whole migration sequence now executes in one transaction after
 taking `pg_advisory_xact_lock(hashtext('africa-dev-gateway:migrations'))`.
@@ -110,6 +109,31 @@ event polling.
 - Confirm the lock lifetime and the outer transaction prevent concurrent DDL
   races without leaving a partially applied migration ledger.
 - Confirm the operator guidance no longer requires a single-instance startup.
+
+**Claude review:** Claude reviewed commit `73ef6a2` in [GitHub Actions run
+#19](https://github.com/abdulrasaq-oniguguru/AfriStack/actions/runs/37295548031).
+The migration race was fixed in eight three-gateway startup runs. One required
+follow-up remains before M5: serialize bootstrap project creation when multiple
+instances initialize a fresh database together.
+
+## M2.2 — concurrent bootstrap project creation remediation
+
+**Status:** Ready for review
+
+**Scope:** Bootstrap project creation now takes a dedicated transaction-scoped
+advisory lock before checking for the bootstrap key prefix and inserting a
+project/key pair. The migration guide includes a diagnostic query for databases
+initialized by older versions that may already contain duplicate key prefixes;
+the service deliberately does not attempt an unsafe automatic project merge.
+
+**Reviewer checklist:**
+
+- Confirm concurrent fresh-database startup creates exactly one bootstrap
+  project and key prefix.
+- Confirm an existing key prefix returns its original project after the lock is
+  acquired.
+- Confirm the duplicate-prefix diagnostic is accurate and does not imply an
+  automatic safe remediation.
 
 ## Planned subsequent review boundaries
 

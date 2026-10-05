@@ -28,6 +28,22 @@ Webhook events stored before migration `0002_webhook_events_project_scope` have
 no safely attributable project ID. They are preserved, but deliberately remain
 hidden from project-scoped `GET /v1/events` responses.
 
+The bootstrap project/key pair is also created behind a transaction-scoped
+advisory lock, so concurrent first startup cannot assign one bootstrap key to
+multiple projects. Operators upgrading a database that may have been initialized
+by an earlier concurrent deployment should inspect duplicate key prefixes before
+making changes manually:
+
+```sql
+select prefix, count(*)
+from project_api_keys
+group by prefix
+having count(*) > 1;
+```
+
+AfriStack does not automatically merge duplicate projects because their payments
+and events cannot be reassigned safely without operator review.
+
 The Compose mock flow exercises startup against both a clean volume in CI and a
 locally preserved volume during release verification. A dedicated upgraded-
 database CI fixture remains a future hardening improvement.

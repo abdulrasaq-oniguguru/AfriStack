@@ -18,7 +18,7 @@ export class PostgresGatewayRepository implements GatewayRepository {
   }
 
   async migrate(): Promise<void> {
-    await this.#sql.begin(async (sql) => {
+    return this.#sql.begin(async (sql) => {
       await sql`select pg_advisory_xact_lock(hashtext('africa-dev-gateway:migrations'))`;
       await sql`
         create table if not exists schema_migrations (
@@ -40,15 +40,16 @@ export class PostgresGatewayRepository implements GatewayRepository {
 
   async bootstrapProject(name: string, key: string): Promise<Project> {
     const prefix = apiKeyPrefix(key);
-    const existing = await this.#sql<{ id: string; name: string }[]>`
-      select p.id, p.name from projects p join project_api_keys k on k.project_id = p.id where k.prefix = ${prefix} limit 1`;
-    if (existing[0]) return existing[0];
-    const project = { id: randomUUID(), name };
-    await this.#sql.begin(async (sql) => {
+    return this.#sql.begin(async (sql) => {
+      await sql`select pg_advisory_xact_lock(hashtext('africa-dev-gateway:bootstrap'))`;
+      const [existing] = await sql<{ id: string; name: string }[]>`
+        select p.id, p.name from projects p join project_api_keys k on k.project_id = p.id where k.prefix = ${prefix} limit 1`;
+      if (existing) return existing;
+      const project = { id: randomUUID(), name };
       await sql`insert into projects (id, name) values (${project.id}, ${project.name})`;
       await sql`insert into project_api_keys (id, project_id, prefix, key_hash) values (${randomUUID()}, ${project.id}, ${prefix}, ${hashApiKey(key)})`;
+      return project;
     });
-    return project;
   }
 
   async ready(): Promise<boolean> {

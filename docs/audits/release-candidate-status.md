@@ -56,7 +56,8 @@ The local Docker image rebuild was interrupted during dependency installation in
 ## Remaining v0.1 release blockers
 
 1. Confirm GitHub Actions is green for `8fcb843`, especially the Docker build.
-2. Run the mock quickstart against a freshly built gateway image if CI does not already do this.
+2. Review the newly added clean Docker mock smoke test in CI and confirm its first
+   remote run is green.
 3. Obtain a real Flutterwave sandbox certification run. Do not claim Flutterwave sandbox certification before it succeeds.
 4. Create the release-candidate notes and package audits before publishing or tagging a final `v0.1.0`.
 

@@ -24,17 +24,17 @@
     "check": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm build"
   },
   "devDependencies": {
-    "@changesets/cli": "2.29.7",
-    "@eslint/js": "^9.37.0",
-    "@types/node": "^22.18.8",
-    "eslint": "^9.37.0",
+    "@changesets/cli": "3.0.3",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.4",
+    "eslint": "^10.12.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.6.2",
     "tsup": "^8.5.0",
     "tsx": "4.23.15",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.1",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.71.1",
+    "vitest": "^5.0.3"
   },
   "main": "eslint.config.js",
   "directories": {

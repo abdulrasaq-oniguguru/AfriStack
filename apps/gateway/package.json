@@ -19,7 +19,7 @@
     "@africa-dev/provider-paystack": "workspace:^",
     "@africa-dev/provider-termii": "workspace:^",
     "@africa-dev/testkit": "workspace:^",
-    "@fastify/helmet": "^13.0.0",
+    "@fastify/helmet": "^13.1.2",
     "@fastify/rate-limit": "^10.0.0",
     "fastify": "^5.0.0",
     "postgres": "^3.4.0",
